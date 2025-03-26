@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Validation Report</title>
+    <link rel="icon" type="image/jpeg" href="{{ url_for('static', filename='images/wuduh_logo.jpeg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header class="app-header">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/Wuduh_Final_Logo.png') }}" alt="Logo" class="app-logo">
+        </div>
+    </header>
+    <div class="app-layout">
+        <aside class="main-sidebar">
+            <nav class="sidebar">
+                <div class="nav-section">
+                    <div class="nav-group">
+                        <a href="/overview" class="nav-item {{ 'active' if request.endpoint == 'overview_page' }}">
+                            <span class="icon">📈</span>
+                            Overview
+                        </a>
+                        <a href="/" class="nav-item {{ 'active' if request.endpoint == 'dashboard' }}">
+                            <span class="icon">📊</span>
+                            Standard Validation
+                        </a>
+                        <a href="#" class="nav-item" data-tab="query">
+                            <span class="icon">📝</span>
+                            Query Validation
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </aside>
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

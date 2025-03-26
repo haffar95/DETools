@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="overview-container">
+    <h1>Data Quality Overview</h1>
+
+    <div class="overview-selection-panel">
+        <select id="schemaSelect" class="form-control">
+            <option value="">Select a schema...</option>
+            {% for schema in schemas %}
+            <option value="{{ schema }}">{{ schema }}</option>
+            {% endfor %}
+        </select>
+        <button id="runValidation" class="btn btn-primary">Run Validation</button>
+    </div>
+
+    <div class="overview-metrics">
+        <div class="metric-card">
+            <h2>Overall DQ Score</h2>
+            <p class="score">-- %</p>
+        </div>
+        <div class="metric-card">
+            <h2>Processed Rows</h2>
+            <p class="score">--</p>
+            <p>Total Rows</p>
+        </div>
+        <div class="metric-card">
+            <h2>Failed Rows</h2>
+            <p class="score">--</p>
+            <p>Failed Validations</p>
+        </div>
+        <div class="metric-card">
+            <h2>Processing Time</h2>
+            <p class="score">-- s</p>
+            <p>Total Duration</p>
+        </div>
+    </div>
+
+    <div class="table-metrics">
+        <div class="metric-card">
+            <h2>Total Tables</h2>
+            <p class="score">--</p>
+            <p>In Schema</p>
+        </div>
+        <div class="metric-card">
+            <h2>Processed Tables</h2>
+            <p class="score">--</p>
+            <p>Successfully Validated</p>
+        </div>
+        <div class="metric-card">
+            <h2>Skipped Tables</h2>
+            <p class="score">--</p>
+            <p>Failed to Validate</p>
+        </div>
+    </div>
+
+    <div class="skipped-tables-section">
+        <h2>Skipped Tables Details</h2>
+        <div class="skipped-tables-list">
+            <p class="no-data">No skipped tables to display</p>
+        </div>
+    </div>
+
+    <div class="quality-indicators">
+        <div class="indicator-card">
+            <h4>Completeness</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+        <div class="indicator-card">
+            <h4>Timeliness</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+        <div class="indicator-card">
+            <h4>Accuracy</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+        <div class="indicator-card">
+            <h4>Consistency</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+        <div class="indicator-card">
+            <h4>Uniqueness</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+        <div class="indicator-card">
+            <h4>Validity</h4>
+            <div class="indicator-circle">--</div>
+        </div>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/overview.js') }}"></script>
+{% endblock %}

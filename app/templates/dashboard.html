@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="validation-container">
+    <h1>Data Validation Dashboard</h1>
+    <div id="standard-mode" class="mode-content active">
+        <div class="selection-panel">
+            <div class="select-group">
+                <label for="schemaSelect">Select Schema:</label>
+                <select id="schemaSelect" style="width: 400px;" class="searchable-select">
+                    <option value="">Select a schema</option>
+                    {% for schema in schemas %}
+                    <option value="{{ schema }}">{{ schema }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="select-group">
+                <label for="tableSelect">Select Table:</label>
+                <select id="tableSelect" style="width: 400px;" class="searchable-select" disabled>
+                    <option value="">Select a table</option>
+                </select>
+            </div>
+
+            <div class="select-group" id="keyColumnGroup" style="display: none;">
+                <label for="keySelect">Primary/Unique Key (Optional):</label>
+                <select id="keySelect" style="width: 400px;">
+                    <option value="">Select identifier column</option>
+                </select>
+                <small class="field-info"></small>
+            </div>
+
+            <div class="select-group" id="dateColumnGroup" style="display: none;">
+                <label for="dateSelect">Date Filter (Optional):</label>
+                <select id="dateSelect" style="width: 400px;">
+                    <option value="">Select date column</option>
+                </select>
+                <small class="field-info"></small>
+            </div>
+
+            <div class="select-group" id="dateValueGroup" style="display: none;">
+                <label>Select Date Range:</label>
+                <div class="date-range-container">
+                    <div class="date-input-group">
+                        <label for="startDate">From:</label>
+                        <input type="date" id="startDate" style="width: 190px;">
+                    </div>
+                    <div class="date-input-group">
+                        <label for="endDate">To:</label>
+                        <input type="date" id="endDate" style="width: 190px;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="select-group" id="foreignKeyGroup" style="display: none;">
+                <label for="foreignKeySelect">Foreign Key (Optional):</label>
+                <select id="foreignKeySelect" style="width: 400px;">
+                    <option value="">Select foreign key column</option>
+                </select>
+                <small class="field-info"></small>
+            </div>
+
+            <button id="validateBtn" style="display: none;">Validate</button>
+        </div>
+
+        <div id="validationResults" class="results-panel">
+        </div>
+    </div>
+
+    <div id="query-mode" class="mode-content">
+        <div class="selection-panel">
+            <div class="query-section">
+                <h3>Query Validation</h3>
+                <div class="query-input">
+                    <label for="sqlQuery">SQL Query:</label>
+                    <textarea id="sqlQuery" rows="4" placeholder="Enter your SQL query here..."></textarea>
+                </div>
+                <button id="validateQueryBtn">Validate Query</button>
+            </div>
+        </div>
+        <div id="queryValidationResults" class="results-panel">
+        </div>
+    </div>
+</div>
+{% endblock %}
