@@ -98,7 +98,7 @@ def validate_query():
         
         if 'error' in results:
             return jsonify(results), 200
-            #Change
+
         return jsonify(results)
         
     except Exception as e:
