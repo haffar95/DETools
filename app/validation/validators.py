@@ -1,8 +1,9 @@
-from app.database.db_connector import DatabaseConnector
+from app.database.db_connector import DatabaseConnector, DatabaseType
 from datetime import datetime
 from functools import lru_cache
 from time import time
 import os
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
@@ -14,6 +15,11 @@ class DataValidator:
         self._cache = {}
         self._cache_timestamps = {}
         self._cache_ttl = 1800  # 30 minutes in seconds
+        self._config_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'database_configs.json')
+        self._database_configs = {}
+        self._selected_database = None
+        # Load existing database configurations
+        self._load_database_configs()
         # Define table-specific validation rules
         self.table_rules = {
             'contacts': {
@@ -66,6 +72,100 @@ class DataValidator:
                 }
             }
         }
+
+    def _load_database_configs(self):
+        """Load database configurations from the JSON file"""
+        try:
+            if os.path.exists(self._config_file):
+                with open(self._config_file, 'r') as f:
+                    self._database_configs = json.load(f)
+        except Exception as e:
+            print(f"Error loading database configurations: {str(e)}")
+            self._database_configs = {}
+
+    def _save_database_configs(self):
+        """Save database configurations to the JSON file"""
+        try:
+            os.makedirs(os.path.dirname(self._config_file), exist_ok=True)
+            with open(self._config_file, 'w') as f:
+                json.dump(self._database_configs, f, indent=4)
+        except Exception as e:
+            print(f"Error saving database configurations: {str(e)}")
+
+    def get_database_configs(self) -> List[Dict[str, Any]]:
+        """Get all database configurations"""
+        configs = [
+            {
+                'name': name,
+                'type': config['type'],
+                'host': config.get('host', ''),
+                'port': config.get('port', ''),
+                'user': config['user'],
+                'password': config['password'],
+                'account': config.get('account'),
+                'warehouse': config.get('warehouse'),
+                'role': config.get('role'),
+                'database': config.get('database')
+            }
+            for name, config in self._database_configs.items()
+        ]
+        return configs
+
+    def save_database_config(self, db_name: str, db_type: str, db_host: str, db_port: str, db_user: str, db_password: str, 
+                           db_account: str = None, db_warehouse: str = None, db_role: str = None, db_database: str = None):
+        """Save a new database configuration"""
+        self._database_configs[db_name] = {
+            'type': db_type,
+            'host': db_host,
+            'port': db_port,
+            'user': db_user,
+            'password': db_password,
+            'account': db_account,
+            'warehouse': db_warehouse,
+            'role': db_role,
+            'database': db_database
+        }
+        self._save_database_configs()
+
+    def delete_database_config(self, db_name: str):
+        """Delete a database configuration"""
+        if db_name in self._database_configs:
+            del self._database_configs[db_name]
+            self._save_database_configs()
+            # If the deleted database was selected, clear the selection
+            if self._selected_database == db_name:
+                self._selected_database = None
+            return True
+        return False
+
+    def set_selected_database(self, db_name: str):
+        """Set the selected database for validation"""
+        if db_name in self._database_configs:
+            self._selected_database = db_name
+            # Update the database connector with the new configuration
+            config = self._database_configs[db_name]
+            
+            # Set default port for Snowflake if not specified
+            if config['type'] == 'snowflake' and not config['port']:
+                config['port'] = 443
+                
+            self.db.update_connection(
+                host=config['host'],
+                port=config['port'],
+                user=config['user'],
+                password=config['password'],
+                db_type=config['type'],
+                account=config.get('account'),
+                warehouse=config.get('warehouse'),
+                role=config.get('role'),
+                database=config.get('database')
+            )
+            return True
+        return False
+
+    def get_selected_database(self) -> Optional[str]:
+        """Get the currently selected database name"""
+        return self._selected_database
 
     def _check_accuracy(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Check data accuracy including realistic value ranges, date formats, and patterns"""
@@ -772,7 +872,15 @@ class DataValidator:
         """
         with self.db.get_connection() as conn:
             try:
-                results = conn.run(query)
+                if self.db.db_type == DatabaseType.POSTGRES:
+                    results = conn.run(query)
+                    columns = [desc['name'] for desc in conn.columns]
+                else:  # Snowflake
+                    cursor = conn.cursor()
+                    cursor.execute(query)
+                    results = cursor.fetchall()
+                    columns = [desc[0] for desc in cursor.description]
+
                 if not results:
                     return {
                         'error': 'Query returned no results',
@@ -782,7 +890,6 @@ class DataValidator:
                         'date_issues': {}
                     }
 
-                columns = [desc['name'] for desc in conn.columns]
                 if not columns:
                     return {
                         'error': 'Query returned no columns',

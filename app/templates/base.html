@@ -7,11 +7,107 @@
     <link rel="icon" type="image/jpeg" href="{{ url_for('static', filename='images/wuduh_logo.jpeg') }}">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            color: #333;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .nav-item:hover {
+            background-color: #f0f0f0;
+        }
+        .nav-item.active {
+            background-color: #e0e0e0;
+            font-weight: bold;
+        }
+        .icon {
+            margin-right: 10px;
+        }
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .current-db-indicator {
+            display: flex;
+            align-items: center;
+            background-color: #f8f9fa;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #dee2e6;
+            font-size: 14px;
+            color: #495057;
+            cursor: pointer;
+            position: relative;
+        }
+        .current-db-indicator .icon {
+            margin-right: 8px;
+            color: #28a745;
+        }
+        .current-db-indicator .db-name {
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .current-db-indicator .db-type {
+            color: #6c757d;
+            font-size: 12px;
+            background-color: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .no-db-selected {
+            color: #dc3545;
+        }
+        .db-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 5px;
+            min-width: 200px;
+            z-index: 1000;
+            display: none;
+        }
+        .db-dropdown.show {
+            display: block;
+        }
+        .db-dropdown-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .db-dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+        .db-dropdown-item .db-type {
+            font-size: 11px;
+            padding: 1px 6px;
+        }
+    </style>
 </head>
 <body>
     <header class="app-header">
         <div class="logo-container">
             <img src="{{ url_for('static', filename='images/Wuduh_Final_Logo.png') }}" alt="Logo" class="app-logo">
+        </div>
+        <div class="current-db-indicator" id="currentDbIndicator" onclick="toggleDatabaseDropdown()">
+            <span class="icon">🔌</span>
+            <span class="db-name">No database selected</span>
+            <span class="db-type no-db-selected">Please select a database</span>
+        </div>
+        <div class="db-dropdown" id="databaseDropdown">
+            <!-- Database list will be populated here -->
         </div>
     </header>
     <div class="app-layout">
@@ -19,17 +115,21 @@
             <nav class="sidebar">
                 <div class="nav-section">
                     <div class="nav-group">
-                        <a href="/overview" class="nav-item {{ 'active' if request.endpoint == 'overview_page' }}">
+                        <a href="{{ url_for('overview_page') }}" class="nav-item {% if request.endpoint == 'overview_page' %}active{% endif %}">
                             <span class="icon">📈</span>
                             Overview
                         </a>
-                        <a href="/" class="nav-item {{ 'active' if request.endpoint == 'dashboard' }}">
+                        <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' and not '#query-mode' in request.url %}active{% endif %}">
                             <span class="icon">📊</span>
                             Standard Validation
                         </a>
-                        <a href="#" class="nav-item" data-tab="query">
+                        <a href="{{ url_for('dashboard') }}#query-mode" class="nav-item {% if request.endpoint == 'dashboard' and '#query-mode' in request.url %}active{% endif %}" id="queryModeLink">
                             <span class="icon">📝</span>
                             Query Validation
+                        </a>
+                        <a href="{{ url_for('database_config') }}" class="nav-item {% if request.endpoint == 'database_config' %}active{% endif %}">
+                            <span class="icon">⚙️</span>
+                            Database Configuration
                         </a>
                     </div>
                 </div>
@@ -42,5 +142,162 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Function to update the current database indicator
+            function updateCurrentDbIndicator() {
+                fetch('/api/current-database')
+                    .then(response => response.json())
+                    .then(data => {
+                        const indicator = document.getElementById('currentDbIndicator');
+                        if (data.selected_db) {
+                            indicator.innerHTML = `
+                                <span class="icon">🔌</span>
+                                <span class="db-name">${data.selected_db.name}</span>
+                                <span class="db-type">${data.selected_db.type}</span>
+                            `;
+                            indicator.classList.remove('no-db-selected');
+                        } else {
+                            indicator.innerHTML = `
+                                <span class="icon">🔌</span>
+                                <span class="db-name">No database selected</span>
+                                <span class="db-type no-db-selected">Please select a database</span>
+                            `;
+                            indicator.classList.add('no-db-selected');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching current database:', error);
+                        const indicator = document.getElementById('currentDbIndicator');
+                        indicator.innerHTML = `
+                            <span class="icon">🔌</span>
+                            <span class="db-name">Error</span>
+                            <span class="db-type no-db-selected">Failed to load database info</span>
+                        `;
+                        indicator.classList.add('no-db-selected');
+                    });
+            }
+
+            // Function to load available databases
+            function loadAvailableDatabases() {
+                fetch('/api/database-configs')
+                    .then(response => response.json())
+                    .then(data => {
+                        const dropdown = document.getElementById('databaseDropdown');
+                        dropdown.innerHTML = data.databases.map(db => `
+                            <div class="db-dropdown-item" onclick="selectDatabase('${db.name}')">
+                                <span>${db.name}</span>
+                                <span class="db-type">${db.type}</span>
+                            </div>
+                        `).join('');
+                    })
+                    .catch(error => console.error('Error loading databases:', error));
+            }
+
+            // Update indicator on page load
+            updateCurrentDbIndicator();
+            loadAvailableDatabases();
+
+            // Function to switch to query mode
+            function switchToQueryMode() {
+                const queryMode = document.getElementById('query-mode');
+                const standardMode = document.getElementById('standard-mode');
+                if (queryMode && standardMode) {
+                    queryMode.classList.add('active');
+                    standardMode.classList.remove('active');
+                    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+                    document.getElementById('queryModeLink').classList.add('active');
+                }
+            }
+
+            // Function to switch to standard mode
+            function switchToStandardMode() {
+                const queryMode = document.getElementById('query-mode');
+                const standardMode = document.getElementById('standard-mode');
+                if (queryMode && standardMode) {
+                    queryMode.classList.remove('active');
+                    standardMode.classList.add('active');
+                    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+                    document.querySelector('a[href="{{ url_for("dashboard") }}"]').classList.add('active');
+                }
+            }
+
+            // Handle query mode link click
+            const queryModeLink = document.getElementById('queryModeLink');
+            if (queryModeLink) {
+                queryModeLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (window.location.pathname !== '{{ url_for("dashboard") }}') {
+                        window.location.href = this.href;
+                    } else {
+                        switchToQueryMode();
+                        history.pushState(null, '', this.href);
+                    }
+                });
+            }
+
+            // Handle browser back/forward buttons
+            window.addEventListener('popstate', function() {
+                const hash = window.location.hash;
+                if (hash === '#query-mode') {
+                    switchToQueryMode();
+                } else {
+                    switchToStandardMode();
+                }
+            });
+
+            // Check initial hash on page load
+            if (window.location.hash === '#query-mode') {
+                switchToQueryMode();
+            }
+        });
+
+        // Function to toggle database dropdown
+        function toggleDatabaseDropdown() {
+            const dropdown = document.getElementById('databaseDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        // Function to select a database
+        function selectDatabase(dbName) {
+            const formData = new FormData();
+            formData.append('selected_db', dbName);
+
+            fetch('/select-database', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    return fetch('/api/current-database')
+                        .then(response => response.json())
+                        .then(data => {
+                            const indicator = document.getElementById('currentDbIndicator');
+                            if (data.selected_db) {
+                                indicator.innerHTML = `
+                                    <span class="icon">🔌</span>
+                                    <span class="db-name">${data.selected_db.name}</span>
+                                    <span class="db-type">${data.selected_db.type}</span>
+                                `;
+                                indicator.classList.remove('no-db-selected');
+                            }
+                            document.getElementById('databaseDropdown').classList.remove('show');
+                        });
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('databaseDropdown');
+            const indicator = document.getElementById('currentDbIndicator');
+            if (!indicator.contains(event.target) && !dropdown.contains(event.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+    </script>
 </body>
 </html>
