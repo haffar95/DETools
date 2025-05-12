@@ -1,24 +1,30 @@
-# Data Quality Validation Tool
+# Data Quality Tools
 
-A Flask-based web application for validating data quality in PostgreSQL databases. This tool provides comprehensive data validation capabilities including schema validation, custom query validation, and automated data quality checks.
+A powerful web-based tool for validating data quality across PostgreSQL and Snowflake databases. This tool provides comprehensive data validation capabilities through both standard validation modes and custom query validations.
 
 ## Features
 
-- **Schema-level Validation**: Validate entire database schemas
-- **Table-level Validation**: Perform detailed validation on specific tables
-- **Custom Query Validation**: Run validations on custom SQL queries
-- **Data Quality Metrics**:
-  - Completeness (null value analysis)
-  - Uniqueness (duplicate detection)
-  - Accuracy (value range and format validation)
-  - Timeliness (data freshness checks)
-  - Consistency (referential integrity)
+- **Multi-Database Support**
+  - PostgreSQL database integration
+  - Snowflake database integration
+  - Easy database switching through UI
+
+- **Validation Modes**
+  - Standard Validation: Pre-built validation rules for common data quality checks
+  - Query Validation: Custom SQL query-based validation
+  - Date-range based validation support
+
+- **User Interface**
+  - Modern, responsive web interface
+  - Interactive dashboard for validation results
+  - Real-time database connection status
+  - Schema and table selection dropdowns
 
 ## Prerequisites
 
-- Python 3.x
-- PostgreSQL database
-- pip (Python package installer)
+- Python 3.8 or higher
+- PostgreSQL/Snowflake database access
+- pip (Python package manager)
 
 ## Installation
 
@@ -33,80 +39,105 @@ A Flask-based web application for validating data quality in PostgreSQL database
    pip install -r requirements.txt
    ```
 
-3. Configure database connection:
-   - Update `config/config.py` with your PostgreSQL database credentials
+## Configuration
 
-## Usage
+1. Database Configuration:
+   - Create `database_configs.json` in the root directory
+   - Add your database configurations:
+   ```json
+   {
+     "databases": [
+       {
+         "name": "your_database_name",
+         "type": "postgres",
+         "host": "your_host",
+         "port": "5432",
+         "database": "db_name",
+         "user": "username",
+         "password": "your_password"
+       }
+     ]
+   }
+   ```
+   Or Just use the UI to add your database configurations.
 
-### Starting the Application
-
-```bash
-python run.py
-```
-
-The application will start on `http://localhost:5001`
-
-### Available Endpoints
-
-#### Web Interface
-- `/`: Main dashboard
-- `/overview`: Overview page for schema-level validation
-
-#### API Endpoints
-- `GET /api/tables/<schema>`: Get all tables in a schema
-- `GET /api/columns/<table_name>`: Get columns for a specific table
-- `GET /api/validate`: Validate a specific table
-- `POST /api/validate-schema`: Validate an entire schema
-- `POST /api/validate-query`: Validate results of a custom query
-
-### Validation Modes
-
-1. **Table Validation**
-   - Select schema and table
-   - Choose validation period (optional)
-   - Specify key columns for uniqueness checks
-   - View detailed validation results
-
-2. **Schema Validation**
-   - Select schema to validate
-   - Get comprehensive validation report for all tables
-
-3. **Custom Query Validation**
-   - Write custom SELECT queries
-   - Get validation results for the query output
+2. Application Configuration:
+   - Update `config/config.py` with your settings
 
 ## Project Structure
 
 ```
 ├── app/
 │   ├── database/         # Database connection handling
-│   ├── validation/       # Validation logic
-│   ├── static/          # Static files (CSS, JS)
-│   └── templates/       # HTML templates
+│   │   ├── __init__.py
+│   │   └── db_connector.py
+│   ├── models/          # Data models
+│   │   └── __init__.py
+│   ├── static/          # Static assets
+│   │   ├── css/
+│   │   ├── images/
+│   │   └── js/
+│   ├── templates/       # HTML templates
+│   │   ├── base.html
+│   │   ├── dashboard.html
+│   │   ├── database_config.html
+│   │   └── overview.html
+│   └── validation/      # Validation logic
+│       ├── __init__.py
+│       └── validators.py
 ├── config/             # Configuration files
+│   └── config.py
+├── requirements.txt    # Python dependencies
 └── run.py             # Application entry point
 ```
 
-## Validation Rules
+## Running the Application
 
-The tool includes predefined validation rules for common data types:
+1. Start the Flask server:
+   ```bash
+   python run.py
+   ```
 
-- **Dates**: Format validation, future date detection
-- **Numeric Values**: Range checks, negative value detection
-- **Emails**: Format validation
-- **Phone Numbers**: Format validation
-- **Custom Rules**: Configurable in `validators.py`
+2. Access the web interface:
+   - Open your browser and navigate to `http://localhost:5000`
+   - Select your database from the dropdown menu
+   - Choose validation mode (Standard/Query)
+   - Configure validation parameters
+   - Run validation checks
 
-## Security Features
+## Dependencies
 
-- Query validation to prevent SQL injection
-- Restricted to SELECT queries only
-- File size limits for data processing
-- Configurable rate limiting
+- Flask==2.0.1
+- Werkzeug==3.0.1
+- Jinja2>=3.0.0
+- pg8000==1.29.1
+- numpy>=1.24.0
+- pandas>=2.0.0
+
+## Features in Detail
+
+### Standard Validation
+- Schema and table selection
+- Primary/Unique key validation
+- Date range filtering
+- Null value analysis
+- Duplicate record detection
+- Data type consistency checks
+
+### Query Validation
+- Custom SQL query execution
+- Query result validation
+- Performance optimization suggestions
+
+### Database Management
+- Multiple database configuration support
+- Real-time connection status
+- Easy database switching
+- Connection error handling
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
