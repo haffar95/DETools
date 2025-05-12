@@ -708,7 +708,12 @@ class DataValidator:
             """
             
             with self.db.get_connection() as conn:
-                tables = [row[0] for row in conn.run(query)]
+                if self.db.db_type == DatabaseType.POSTGRES:
+                    tables = [row[0] for row in conn.run(query)]
+                else:  # Snowflake
+                    cursor = conn.cursor()
+                    cursor.execute(query)
+                    tables = [row[0] for row in cursor.fetchall()]
                 
                 if not tables:
                     return {
@@ -945,3 +950,57 @@ class DataValidator:
                     'date_issues': {},
                     'row_count': 0
                 }
+
+    def validate_schema(self, schema: str) -> Dict[str, Any]:
+        """Validate a database schema and its tables"""
+        try:
+            # Get all tables in the schema
+            tables = self.db.get_tables(schema)
+            if not tables:
+                return {
+                    'error': f'No tables found in schema {schema}',
+                    'tables_count': 0,
+                    'validation_results': {}
+                }
+
+            validation_results = {}
+            total_tables = len(tables)
+            processed_tables = 0
+
+            # Use ThreadPoolExecutor for parallel processing
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                # Create a dictionary to store futures
+                future_to_table = {}
+                
+                # Submit validation tasks for each table
+                for table in tables:
+                    future = executor.submit(self.validate_table, table, schema)
+                    future_to_table[future] = table
+
+                # Process completed validations
+                for future in as_completed(future_to_table):
+                    table = future_to_table[future]
+                    try:
+                        result = future.result()
+                        validation_results[table] = result
+                        processed_tables += 1
+                    except Exception as e:
+                        validation_results[table] = {
+                            'error': str(e),
+                            'row_count': 0,
+                            'null_values': {'details': {}}
+                        }
+
+            return {
+                'schema': schema,
+                'tables_count': total_tables,
+                'processed_tables': processed_tables,
+                'validation_results': validation_results
+            }
+
+        except Exception as e:
+            return {
+                'error': f'Schema validation failed: {str(e)}',
+                'tables_count': 0,
+                'validation_results': {}
+            }

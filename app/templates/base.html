@@ -45,6 +45,7 @@
             color: #495057;
             cursor: pointer;
             position: relative;
+            z-index: 1001;
         }
         .current-db-indicator .icon {
             margin-right: 8px;
@@ -65,9 +66,7 @@
             color: #dc3545;
         }
         .db-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
+            position: fixed;
             background: white;
             border: 1px solid #dee2e6;
             border-radius: 4px;
@@ -255,6 +254,11 @@
         // Function to toggle database dropdown
         function toggleDatabaseDropdown() {
             const dropdown = document.getElementById('databaseDropdown');
+            const indicator = document.getElementById('currentDbIndicator');
+            const rect = indicator.getBoundingClientRect();
+            
+            dropdown.style.top = `${rect.bottom + window.scrollY}px`;
+            dropdown.style.right = `${window.innerWidth - rect.right}px`;
             dropdown.classList.toggle('show');
         }
 

@@ -58,6 +58,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const data = await response.json();
+            console.log('Validation response data:', data);
+
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid response data format');
+            }
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Ensure required data properties exist
+            if (typeof data.overall_score === 'undefined' || !data.metrics) {
+                throw new Error('Missing required validation data');
+            }
 
             // Update metrics
             document.querySelector('.metric-card:nth-child(1) .score').textContent = 
@@ -93,23 +107,28 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Update quality indicators
-            const indicators = data.metrics || {};
-            const updateIndicator = (element, score) => {
-                element.textContent = `${(score || 0).toFixed(2)}`;
-                element.style.setProperty('--percentage', score || 0);
-                element.classList.add('animated');
-            };
-
-            updateIndicator(document.querySelector('.indicator-card:nth-child(1) .indicator-circle'), indicators.completeness?.score);
-            updateIndicator(document.querySelector('.indicator-card:nth-child(2) .indicator-circle'), indicators.timeliness?.score);
-            updateIndicator(document.querySelector('.indicator-card:nth-child(3) .indicator-circle'), indicators.accuracy?.score);
-            updateIndicator(document.querySelector('.indicator-card:nth-child(4) .indicator-circle'), indicators.consistency?.score);
-            updateIndicator(document.querySelector('.indicator-card:nth-child(5) .indicator-circle'), indicators.uniqueness?.score);
-            updateIndicator(document.querySelector('.indicator-card:nth-child(6) .indicator-circle'), indicators.validity?.score);
+            const metrics = data.metrics || {};
+            Object.entries(metrics).forEach(([key, value]) => {
+                const indicator = qualityIndicators[key.toLowerCase()];
+                if (indicator) {
+                    const score = value.score || 0;
+                    indicator.textContent = `${score.toFixed(2)}`;
+                    indicator.style.setProperty('--percentage', score);
+                    indicator.classList.add('animated');
+                    updateIndicatorStyle(indicator, score);
+                }
+            });
 
         } catch (error) {
             console.error('Validation error:', error);
-            alert('An error occurred during validation. Please try again.');
+            let errorMessage = error.message;
+            if (error.response) {
+                try {
+                    const errorData = await error.response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch {}
+            }
+            alert(`Validation Error: ${errorMessage}`);
         } finally {
             // Reset button state and hide loading overlay
             runValidationBtn.innerHTML = 'Run Validation';
