@@ -1,6 +1,68 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if needs_connection %}
+<div id="connection-popup" class="modal">
+    <div class="modal-content">
+        <h2>Database Connection Required</h2>
+        <p>Please select or add a database connection to continue.</p>
+        <div class="modal-actions">
+            <a href="{{ url_for('database_config') }}" class="btn btn-primary">Configure Database</a>
+            <button onclick="document.getElementById('connection-popup').style.display='none'" class="btn btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.modal {
+    display: block;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 500px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.modal-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn {
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-size: 14px;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+</style>
+{% endif %}
 <div class="overview-container">
     <h1>Data Quality Overview</h1>
 

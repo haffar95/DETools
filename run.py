@@ -1,8 +1,11 @@
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
 from app.database.db_connector import DatabaseConnector
 from app.validation.validators import DataValidator
+from app.models.user import User
+from app.auth import login_required, admin_required, connection_access_required
 from flask_cors import CORS
 import os
+import secrets
 
 # Create Flask app with explicit template and static folders
 template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))
@@ -11,16 +14,60 @@ app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 CORS(app)
 app.config.from_object('config.config.Config')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB limit
+app.config['SECRET_KEY'] = secrets.token_hex(16)
 
 db = DatabaseConnector()
 validator = DataValidator()
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.get_user(username)
+        if user and user.check_password(password):
+            session['user_id'] = user.username
+            session['is_admin'] = user.is_admin
+            flash('Successfully logged in!', 'success')
+            return redirect(url_for('dashboard'))
+        
+        flash('Invalid username or password', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    # Clear Flask session
+    session.clear()
+    # Clear database validator session data
+    validator.clear_session()
+    flash('Successfully logged out', 'success')
+    return redirect(url_for('login'))
+
 @app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
 def dashboard():
-    schemas = db.get_schemas()
-    return render_template('dashboard.html', schemas=schemas)
+    try:
+        schemas = []
+        if 'current_connection' in session:
+            try:
+                schemas = db.get_schemas()
+            except Exception as e:
+                print(f"Error fetching schemas: {str(e)}")
+        return render_template('dashboard.html', schemas=schemas, needs_connection='current_connection' not in session)
+        return render_template('dashboard.html', schemas=schemas)
+    except ConnectionError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('database_config'))
 
 @app.route('/api/columns/<table_name>')
+@login_required
 def get_columns(table_name):
     columns = db.get_table_columns(table_name)
     return jsonify({
@@ -28,6 +75,7 @@ def get_columns(table_name):
     })
 
 @app.route('/api/validate')
+@login_required
 def validate():
     table_name = request.args.get('table')
     schema = request.args.get('schema', 'public')
@@ -49,6 +97,7 @@ def validate():
         return jsonify({'error': f"Validation failed: {str(e)}"}), 500
 
 @app.route('/api/tables/<schema>')
+@login_required
 def get_tables(schema):
     tables = db.get_tables(schema)
     return jsonify({
@@ -56,6 +105,7 @@ def get_tables(schema):
     })
 
 @app.route('/api/validate-schema', methods=['POST'])
+@login_required
 def validate_schema():
     data = request.get_json()
     schema = data.get('schema')
@@ -66,7 +116,78 @@ def validate_schema():
     results = validator.validate_schema(schema)
     return jsonify(results)
 
+@app.route('/admin')
+@admin_required
+def admin_panel():
+    users = User('temp').load_users()
+    db_configs = validator.get_database_configs()
+    return render_template('admin.html', users=users, connections=db_configs)
+
+@app.route('/admin/create-user', methods=['POST'])
+@admin_required
+def create_user():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    is_admin = request.form.get('is_admin') == '1'
+    
+    if not username or not password:
+        flash('Username and password are required', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    existing_user = User.get_user(username)
+    if existing_user:
+        flash('Username already exists', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    new_user = User(username, password, is_admin)
+    users = User('temp').load_users()
+    users.append(new_user)
+    new_user.save_users(users)
+    
+    flash('User created successfully', 'success')
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/delete-user/<username>', methods=['POST'])
+@admin_required
+def delete_user(username):
+    if username == session.get('user_id'):
+        flash('Cannot delete your own account', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    users = User('temp').load_users()
+    users = [u for u in users if u.username != username]
+    User('temp').save_users(users)
+    
+    flash('User deleted successfully', 'success')
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/update-user-connections/<username>', methods=['POST'])
+@admin_required
+def update_user_connections(username):
+    connection = request.form.get('connection')
+    action = request.form.get('action')
+    
+    if not connection or not action:
+        flash('Connection and action are required', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    user = User.get_user(username)
+    if not user:
+        flash('User not found', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    if action == 'add':
+        user.add_connection(connection)
+        flash('Connection added successfully', 'success')
+    elif action == 'remove':
+        user.remove_connection(connection)
+        flash('Connection removed successfully', 'success')
+    
+    return redirect(url_for('admin_panel'))
+
 @app.route('/api/validate-query', methods=['POST'])
+@login_required
+@connection_access_required
 def validate_query():
     try:
         if not request.is_json:
@@ -106,17 +227,23 @@ def validate_query():
         }), 500
 
 @app.route('/overview')
+@login_required
 def overview_page():
-    schemas = db.get_schemas()
-    return render_template('overview.html', schemas=schemas)
+    try:
+        schemas = db.get_schemas()
+        return render_template('overview.html', schemas=schemas, needs_connection=False)
+    except ConnectionError:
+        return render_template('overview.html', schemas=[], needs_connection=True)
 
 @app.route('/database-config', methods=['GET'])
+@login_required
 def database_config():
-    # Retrieve existing database configurations
-    databases = validator.get_database_configs()  # Implement this method in your validator
+    # Retrieve database configurations for the current user only
+    databases = validator.get_database_configs(current_user=session['user_id'])
     return render_template('database_config.html', databases=databases)
 
 @app.route('/add_database_config', methods=['POST'])
+@login_required
 def add_database_config():
     try:
         db_name = request.form['db_name']
@@ -132,12 +259,14 @@ def add_database_config():
         db_role = request.form.get('db_role')
         db_database = request.form.get('db_database')
         
+        # Add the current user as the creator of the database configuration
         validator.save_database_config(
             db_name=db_name,
             db_type=db_type,
             db_host=db_host,
             db_port=db_port,
             db_user=db_user,
+            creator=session['user_id'],
             db_password=db_password,
             db_account=db_account,
             db_warehouse=db_warehouse,
@@ -152,19 +281,22 @@ def add_database_config():
     return redirect(url_for('database_config'))
 
 @app.route('/delete_database', methods=['POST'])
+@login_required
 def delete_database():
     try:
         db_name = request.form['db_name']
-        if validator.delete_database_config(db_name):
+        if validator.delete_database_config(db_name, current_user=session['user_id']):
             flash('Database configuration deleted successfully!', 'success')
         else:
-            flash('Database configuration not found!', 'error')
+            flash('You do not have permission to delete this database configuration', 'error')
     except Exception as e:
         flash(f'Error deleting database configuration: {str(e)}', 'error')
     
     return redirect(url_for('database_config'))
 
 @app.route('/select-database', methods=['POST'])
+@login_required
+@connection_access_required
 def select_database():
     """Set the selected database for validation"""
     try:
@@ -179,11 +311,22 @@ def select_database():
         db_configs = validator.get_database_configs()
         print(f"Available database configs: {db_configs}")  # Debug log
         
-        selected_config = next((db for db in db_configs if db['name'] == selected_db), None)
+        # Verify that the selected database belongs to the current user
+        selected_config = next((db for db in db_configs if db['name'] == selected_db and db.get('creator') == session['user_id']), None)
+        
+        if not selected_config:
+            flash('You do not have access to this database', 'error')
+            return redirect(url_for('database_config'))
         print(f"Selected config: {selected_config}")  # Debug log
         
         if not selected_config:
             flash('Database configuration not found', 'error')
+            return redirect(url_for('database_config'))
+        
+        # Check if user has access to this connection
+        user = User.get_user(session['user_id'])
+        if not user.can_access_connection(selected_db):
+            flash('You do not have access to this connection', 'danger')
             return redirect(url_for('database_config'))
         
         # Update the database connector with the selected configuration
@@ -193,6 +336,7 @@ def select_database():
                 port=selected_config['port'],
                 user=selected_config['user'],
                 password=selected_config['password'],
+                database=selected_config['database'],
                 db_type='postgres'
             )
         else:  # Snowflake
@@ -208,14 +352,17 @@ def select_database():
                 database=selected_config['database']
             )
         
-        # Set the current database in the validator
-        if validator.set_selected_database(selected_db):
+        # Store the current connection in session
+        session['current_connection'] = selected_db
+        
+        # Set the current database in the validator with user check
+        if validator.set_selected_database(selected_db, current_user=session['user_id']):
             print(f"Successfully set selected database to: {selected_db}")  # Debug log
             flash(f'Successfully connected to {selected_db}', 'success')
             return redirect(url_for('dashboard'))
         else:
             print(f"Failed to set selected database: {selected_db}")  # Debug log
-            flash('Failed to connect to selected database', 'error')
+            flash('You do not have permission to access this database', 'error')
             return redirect(url_for('database_config'))
     except Exception as e:
         print(f"Error selecting database: {str(e)}")  # Debug log
@@ -252,12 +399,14 @@ def get_current_database():
         }), 500
 
 @app.route('/api/database-configs')
+@login_required
 def get_database_configs():
-    """Get all available database configurations"""
+    """Get all available database configurations for the current user"""
     try:
-        databases = validator.get_database_configs()
+        # Get configurations filtered by current user
+        user_databases = validator.get_database_configs(current_user=session['user_id'])
         return jsonify({
-            'databases': databases
+            'databases': user_databases
         })
     except Exception as e:
         return jsonify({

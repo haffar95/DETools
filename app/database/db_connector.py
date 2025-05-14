@@ -13,14 +13,8 @@ class DatabaseType(Enum):
 
 class DatabaseConnector:
     def __init__(self):
-        self.db_type = DatabaseType.POSTGRES  # Default to PostgreSQL
-        self.conn_params = {
-            "host": Config.DB_HOST,
-            "database": Config.DB_NAME,
-            "user": Config.DB_USER,
-            "password": Config.DB_PASSWORD,
-            "port": int(Config.DB_PORT)
-        }
+        self.db_type = None
+        self.conn_params = {}
         self.snowflake_params = {}  # Will store Snowflake specific parameters
         self.connection = None
         self.current_database = None
@@ -28,22 +22,9 @@ class DatabaseConnector:
         self.config = {}  # Initialize config dictionary
         self.load_config()
 
-        # Validate connection parameters
-        if not all(self.conn_params.values()):
-            raise ValueError("Missing required database connection parameters. Please check your config.py")
+        if not self.config:
+            print("No database configurations found. Please add a connection first.")
 
-        # Test connection
-        try:
-            with self.get_connection() as conn:
-                if self.db_type == DatabaseType.POSTGRES:
-                    conn.run("SELECT 1")
-                else:  # Snowflake
-                    conn.cursor().execute("SELECT 1")
-            print("Successfully connected to the database")
-        except Exception as e:
-            print(f"Failed to connect to the database: {str(e)}")
-            print(f"Connection parameters (excluding password): {dict(filter(lambda x: x[0] != 'password', self.conn_params.items()))}")
-            raise
 
     def load_config(self):
         """Load database configurations from the config file."""
@@ -79,7 +60,8 @@ class DatabaseConnector:
                     "host": host,
                     "port": port_num,
                     "user": user,
-                    "password": password
+                    "password": password,
+                    "database": database
                 })
             else:  # Snowflake
                 if not account:
@@ -128,10 +110,17 @@ class DatabaseConnector:
 
     def get_connection(self):
         """Get a database connection with improved error handling"""
+        if not self.db_type:
+            raise ConnectionError("No database connection configured. Please configure a database connection first.")
+            
         try:
             if self.db_type == DatabaseType.POSTGRES:
+                if not all(key in self.conn_params for key in ['host', 'port', 'user', 'password']):
+                    raise ConnectionError("Incomplete PostgreSQL connection parameters. Please configure all required fields.")
                 return pg8000.native.Connection(**self.conn_params)
             else:  # Snowflake
+                if not all(key in self.snowflake_params for key in ['account', 'user', 'password', 'warehouse', 'role', 'database']):
+                    raise ConnectionError("Incomplete Snowflake connection parameters. Please configure all required fields.")
                 try:
                     return snowflake.connector.connect(**self.snowflake_params)
                 except snowflake.connector.errors.OperationalError as e:

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
+<div class="validation-container">
     <h1>Database Configuration</h1>
     
-    <div class="validation-section">
+    <div class="selection-panel">
         <h3>Add New Database</h3>
-        <form action="{{ url_for('add_database_config') }}" method="post" class="selection-panel">
+        <form action="{{ url_for('add_database_config') }}" method="post">
             <div class="select-group">
                 <label for="db_name">Database Name:</label>
                 <input type="text" id="db_name" name="db_name" required class="form-input">
@@ -30,6 +30,11 @@
                 <div class="select-group">
                     <label for="db_port">Port:</label>
                     <input type="number" id="db_port" name="db_port" class="form-input" value="5432">
+                </div>
+
+                <div class="select-group">
+                    <label for="db_database">Database:</label>
+                    <input type="text" id="db_database" name="db_database" class="form-input" required>
                 </div>
             </div>
             
@@ -70,13 +75,13 @@
         </form>
     </div>
 
-    <div class="validation-section">
+    <div class="results-panel">
         <h3>Manage Databases</h3>
         <div class="database-list">
             {% for db in databases %}
             <div class="database-item">
                 <div class="database-info">
-                    <span class="database-name">{{ db.name }} ({{ db.type }})</span>
+                    <span class="database-name">{{ db.name.split('_')[0] }} ({{ db.type }})</span>
                     <form action="{{ url_for('select_database') }}" method="post" class="inline-form" onsubmit="handleDatabaseSelection(this)">
                         <input type="hidden" name="selected_db" value="{{ db.name }}">
                         <button type="submit" class="secondary-button">Select</button>
@@ -136,10 +141,10 @@ function toggleConnectionFields() {
         snowflakeFields.style.display = 'none';
         document.getElementById('db_host').required = true;
         document.getElementById('db_port').required = true;
+        document.getElementById('db_database').required = true;
         document.getElementById('db_account').required = false;
         document.getElementById('db_warehouse').required = false;
         document.getElementById('db_role').required = false;
-        document.getElementById('db_database').required = false;
     } else {
         postgresFields.style.display = 'none';
         snowflakeFields.style.display = 'block';
@@ -243,4 +248,4 @@ document.addEventListener('DOMContentLoaded', function() {
     margin: 0;
 }
 </style>
-{% endblock %} 
+{% endblock %}

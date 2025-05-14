@@ -98,7 +98,9 @@
 <body>
     <header class="app-header">
         <div class="logo-container">
-            <img src="{{ url_for('static', filename='images/Wuduh_Final_Logo.png') }}" alt="Logo" class="app-logo">
+            <a href="{{ url_for('dashboard') }}">
+                <img src="{{ url_for('static', filename='images/Wuduh_Final_Logo.png') }}" alt="Logo" style="height: 40px;">
+            </a>
         </div>
         <div class="current-db-indicator" id="currentDbIndicator" onclick="toggleDatabaseDropdown()">
             <span class="icon">🔌</span>
@@ -115,22 +117,30 @@
                 <div class="nav-section">
                     <div class="nav-group">
                         <a href="{{ url_for('overview_page') }}" class="nav-item {% if request.endpoint == 'overview_page' %}active{% endif %}">
-                            <span class="icon">📈</span>
                             Overview
                         </a>
                         <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' and not '#query-mode' in request.url %}active{% endif %}">
-                            <span class="icon">📊</span>
                             Standard Validation
                         </a>
                         <a href="{{ url_for('dashboard') }}#query-mode" class="nav-item {% if request.endpoint == 'dashboard' and '#query-mode' in request.url %}active{% endif %}" id="queryModeLink">
-                            <span class="icon">📝</span>
                             Query Validation
                         </a>
                         <a href="{{ url_for('database_config') }}" class="nav-item {% if request.endpoint == 'database_config' %}active{% endif %}">
-                            <span class="icon">⚙️</span>
                             Database Configuration
                         </a>
+                        {% if session.get('is_admin') == True %}
+                        <a href="{{ url_for('admin_panel') }}" class="nav-item {% if request.endpoint == 'admin' %}active{% endif %}">
+                            Admin Panel
+                        </a>
+                        {% endif %}
                     </div>
+                    {% if session.user_id %}
+                    <div class="nav-group mt-auto" style="margin-top: auto;">
+                        <a href="{{ url_for('logout') }}" class="nav-item">
+                            Logout
+                        </a>
+                    </div>
+                    {% endif %}
                 </div>
             </nav>
         </aside>
@@ -150,9 +160,10 @@
                     .then(data => {
                         const indicator = document.getElementById('currentDbIndicator');
                         if (data.selected_db) {
+                            const displayName = data.selected_db.name.split('_')[0];
                             indicator.innerHTML = `
                                 <span class="icon">🔌</span>
-                                <span class="db-name">${data.selected_db.name}</span>
+                                <span class="db-name">${displayName}</span>
                                 <span class="db-type">${data.selected_db.type}</span>
                             `;
                             indicator.classList.remove('no-db-selected');
@@ -183,12 +194,16 @@
                     .then(response => response.json())
                     .then(data => {
                         const dropdown = document.getElementById('databaseDropdown');
-                        dropdown.innerHTML = data.databases.map(db => `
-                            <div class="db-dropdown-item" onclick="selectDatabase('${db.name}')">
-                                <span>${db.name}</span>
-                                <span class="db-type">${db.type}</span>
-                            </div>
-                        `).join('');
+                        dropdown.innerHTML = data.databases.map(db => {
+                            // Extract just the connection name without username and timestamp
+                            const displayName = db.name.split('_')[0];
+                            return `
+                                <div class="db-dropdown-item" onclick="selectDatabase('${db.name}')">
+                                    <span>${displayName}</span>
+                                    <span class="db-type">${db.type}</span>
+                                </div>
+                            `;
+                        }).join('');
                     })
                     .catch(error => console.error('Error loading databases:', error));
             }

@@ -18,8 +18,18 @@ class DataValidator:
         self._config_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'database_configs.json')
         self._database_configs = {}
         self._selected_database = None
+        self._current_user = None
         # Load existing database configurations
         self._load_database_configs()
+        
+    def clear_session(self):
+        """Clear all session-specific data when user logs out"""
+        self._selected_database = None
+        self._current_user = None
+        self._cache = {}
+        self._cache_timestamps = {}
+        # Reset database connection to default state
+        self.db = DatabaseConnector()
         # Define table-specific validation rules
         self.table_rules = {
             'contacts': {
@@ -92,29 +102,43 @@ class DataValidator:
         except Exception as e:
             print(f"Error saving database configurations: {str(e)}")
 
-    def get_database_configs(self) -> List[Dict[str, Any]]:
-        """Get all database configurations"""
-        configs = [
-            {
-                'name': name,
-                'type': config['type'],
-                'host': config.get('host', ''),
-                'port': config.get('port', ''),
-                'user': config['user'],
-                'password': config['password'],
-                'account': config.get('account'),
-                'warehouse': config.get('warehouse'),
-                'role': config.get('role'),
-                'database': config.get('database')
-            }
-            for name, config in self._database_configs.items()
-        ]
+    def get_database_configs(self, current_user: str = None) -> List[Dict[str, Any]]:
+        """Get database configurations with display names, filtered by user if specified"""
+        configs = []
+        for name, config in self._database_configs.items():
+            # Only include configurations that belong to the current user if specified
+            if current_user is None or config.get('creator') == current_user:
+                # Use the database name from config or fallback to display_name
+                display_name = config.get('database') if config.get('database') else config.get('display_name', name.split('_')[0])
+                configs.append({
+                    'name': name,
+                    'display_name': display_name,
+                    'type': config['type'],
+                    'host': config.get('host', ''),
+                    'port': config.get('port', ''),
+                    'user': config['user'],
+                    'password': config['password'],
+                    'account': config.get('account'),
+                    'warehouse': config.get('warehouse'),
+                    'role': config.get('role'),
+                    'database': config.get('database'),
+                    'creator': config.get('creator')
+                })
         return configs
 
     def save_database_config(self, db_name: str, db_type: str, db_host: str, db_port: str, db_user: str, db_password: str, 
-                           db_account: str = None, db_warehouse: str = None, db_role: str = None, db_database: str = None):
-        """Save a new database configuration"""
-        self._database_configs[db_name] = {
+                           db_account: str = None, db_warehouse: str = None, db_role: str = None, db_database: str = None, creator: str = None):
+        """Save a new database configuration with user-specific naming"""
+        if not creator:
+            raise ValueError("Creator (user) is required to save database configuration")
+            
+        # Create a unique identifier for this configuration
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        unique_db_name = f"{db_name}_{creator}_{timestamp}"
+        
+        # Store the configuration with the unique name
+        self._database_configs[unique_db_name] = {
+            'display_name': db_name,  # Store original name for display purposes
             'type': db_type,
             'host': db_host,
             'port': db_port,
@@ -123,44 +147,50 @@ class DataValidator:
             'account': db_account,
             'warehouse': db_warehouse,
             'role': db_role,
-            'database': db_database
+            'database': db_database,
+            'creator': creator,
+            'created_at': timestamp
         }
         self._save_database_configs()
 
-    def delete_database_config(self, db_name: str):
-        """Delete a database configuration"""
+    def delete_database_config(self, db_name: str, current_user: str):
+        """Delete a database configuration if it belongs to the current user"""
         if db_name in self._database_configs:
-            del self._database_configs[db_name]
-            self._save_database_configs()
-            # If the deleted database was selected, clear the selection
-            if self._selected_database == db_name:
-                self._selected_database = None
-            return True
+            config = self._database_configs[db_name]
+            # Only allow deletion if the configuration belongs to the current user
+            if config.get('creator') == current_user:
+                del self._database_configs[db_name]
+                self._save_database_configs()
+                # If the deleted database was selected, clear the selection
+                if self._selected_database == db_name:
+                    self._selected_database = None
+                return True
         return False
 
-    def set_selected_database(self, db_name: str):
-        """Set the selected database for validation"""
+    def set_selected_database(self, db_name: str, current_user: str):
+        """Set the selected database for validation if it belongs to the current user"""
         if db_name in self._database_configs:
-            self._selected_database = db_name
-            # Update the database connector with the new configuration
             config = self._database_configs[db_name]
-            
-            # Set default port for Snowflake if not specified
-            if config['type'] == 'snowflake' and not config['port']:
-                config['port'] = 443
+            # Only allow selection if the configuration belongs to the current user
+            if config.get('creator') == current_user:
+                self._selected_database = db_name
                 
-            self.db.update_connection(
-                host=config['host'],
-                port=config['port'],
-                user=config['user'],
-                password=config['password'],
-                db_type=config['type'],
-                account=config.get('account'),
-                warehouse=config.get('warehouse'),
-                role=config.get('role'),
-                database=config.get('database')
-            )
-            return True
+                # Set default port for Snowflake if not specified
+                if config['type'] == 'snowflake' and not config['port']:
+                    config['port'] = 443
+                    
+                self.db.update_connection(
+                    host=config['host'],
+                    port=config['port'],
+                    user=config['user'],
+                    password=config['password'],
+                    db_type=config['type'],
+                    account=config.get('account'),
+                    warehouse=config.get('warehouse'),
+                    role=config.get('role'),
+                    database=config.get('database')
+                )
+                return True
         return False
 
     def get_selected_database(self) -> Optional[str]:
