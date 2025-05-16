@@ -214,17 +214,20 @@ def validate_query():
         results = validator._validate_custom_query(query=query)
         
         if 'error' in results:
-            return jsonify(results), 200
+            return jsonify(results), 200  # Return 200 even for validation errors to allow proper error display
 
         return jsonify(results)
         
     except Exception as e:
+        error_msg = str(e)
+        print(f"Error in validate_query route: {error_msg}")
         return jsonify({
-            'error': str(e),
+            'error': f"An error occurred while validating the query: {error_msg}",
             'row_count': 0,
             'duplicates': {'count': 0, 'details': []},
-            'null_values': {'details': {}}
-        }), 500
+            'null_values': {'details': {}},
+            'date_issues': {}
+        }), 200  # Return 200 to allow proper error display
 
 @app.route('/overview')
 @login_required

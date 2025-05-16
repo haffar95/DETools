@@ -308,13 +308,27 @@ class DataValidator:
 
     def validate_table(self, table_name: str, schema: str = 'public', start_date: Optional[str] = None, end_date: Optional[str] = None, date_column: Optional[str] = None, key_column: Optional[str] = None, foreign_key: Optional[str] = None) -> Dict[str, Any]:
         """Perform basic validations on a table"""
-        # Build base query
-        query = f"""
-            SELECT t.* 
-            FROM "{schema}"."{table_name}" t
-            {f"WHERE DATE({date_column}) BETWEEN '{start_date}' AND '{end_date}'" 
-                if start_date and end_date and date_column else ""}
-        """
+        # Build base query with proper case handling for Snowflake
+        if self.db.db_type == DatabaseType.SNOWFLAKE:
+            # For Snowflake, use uppercase and quoted identifiers
+            schema_name = f'"{schema.upper()}"'
+            table_name = f'"{table_name.upper()}"'
+            date_column = f'"{date_column.upper()}"' if date_column else None
+            
+            query = f"""
+                SELECT t.* 
+                FROM {schema_name}.{table_name} t
+                {f"WHERE DATE({date_column}) BETWEEN '{start_date}' AND '{end_date}'" 
+                    if start_date and end_date and date_column else ""}
+            """
+        else:
+            # For PostgreSQL, use quoted identifiers
+            query = f"""
+                SELECT t.* 
+                FROM "{schema}"."{table_name}" t
+                {f"WHERE DATE({date_column}) BETWEEN '{start_date}' AND '{end_date}'" 
+                    if start_date and end_date and date_column else ""}
+            """
 
         with self.db.get_connection() as conn:
             try:
@@ -588,9 +602,24 @@ class DataValidator:
         # Common date formats to try
         date_formats = ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y/%m/%d', '%d/%m/%Y', '%m/%d/%Y']
         
-        # Check common date columns
-        date_columns = [col for col in df.columns if any(term in col.lower() 
-                      for term in ['date', 'created', 'updated', 'timestamp'])]
+        # Get actual date columns from the DataFrame
+        date_columns = df.select_dtypes(include=['datetime64']).columns.tolist()
+        
+        # Add columns that have explicit date-related names
+        date_related_names = ['date', 'created', 'updated', 'timestamp', 'time']
+        for col in df.columns:
+            col_lower = col.lower()
+            # Only add if it's not already in date_columns and has a date-related name
+            if col not in date_columns and any(name in col_lower for name in date_related_names):
+                # Check if the column actually contains date-like values
+                sample_values = df[col].dropna().head(10)
+                if not sample_values.empty:
+                    # Try to parse the first non-null value as a date
+                    try:
+                        pd.to_datetime(sample_values.iloc[0])
+                        date_columns.append(col)
+                    except (ValueError, TypeError):
+                        continue
 
         for col in date_columns:
             try:
@@ -905,6 +934,33 @@ class DataValidator:
         Args:
             query: SQL query to execute
         """
+        # Basic SQL syntax validation
+        cleaned_query = query.strip()
+        
+        # Skip any leading comments
+        while cleaned_query.startswith('--') or cleaned_query.startswith('/*'):
+            if cleaned_query.startswith('--'):
+                cleaned_query = '\n'.join(line for line in cleaned_query.split('\n')[1:] if line.strip())
+            else:
+                end_comment = cleaned_query.find('*/')
+                if end_comment == -1:
+                    return {
+                        'error': 'Unclosed comment block',
+                        'row_count': 0,
+                        'duplicates': {'count': 0, 'details': []},
+                        'null_values': {'details': {}}
+                    }
+                cleaned_query = cleaned_query[end_comment + 2:].strip()
+        
+        # Check if query starts with WITH for CTEs or SELECT
+        if not (cleaned_query.lower().startswith('with') or cleaned_query.lower().startswith('select')):
+            return {
+                'error': 'Query must start with WITH or SELECT',
+                'row_count': 0,
+                'duplicates': {'count': 0, 'details': []},
+                'null_values': {'details': {}}
+            }
+
         with self.db.get_connection() as conn:
             try:
                 if self.db.db_type == DatabaseType.POSTGRES:
@@ -912,9 +968,84 @@ class DataValidator:
                     columns = [desc['name'] for desc in conn.columns]
                 else:  # Snowflake
                     cursor = conn.cursor()
-                    cursor.execute(query)
-                    results = cursor.fetchall()
-                    columns = [desc[0] for desc in cursor.description]
+                    try:
+                        # For Snowflake, we need to ensure proper case handling and schema references
+                        # First, try to execute the query as is
+                        cursor.execute(query)
+                        results = cursor.fetchall()
+                        columns = [desc[0] for desc in cursor.description]
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "Object does not exist" in error_msg or "not authorized" in error_msg:
+                            # Try to extract the object name from the error
+                            import re
+                            object_match = re.search(r"'([^']+)'", error_msg)
+                            if object_match:
+                                object_name = object_match.group(1)
+                                
+                                # Get the current database and schema
+                                cursor.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
+                                current_db, current_schema = cursor.fetchone()
+                                
+                                # If schema is None, use READER as default
+                                if not current_schema:
+                                    current_schema = "READER"
+                                
+                                # Try different variations of the query
+                                variations = [
+                                    # Original query
+                                    query,
+                                    # With uppercase object name
+                                    query.replace(f'"{object_name}"', object_name.upper())
+                                        .replace(f"'{object_name}'", object_name.upper())
+                                        .replace(object_name, object_name.upper()),
+                                    # With schema prefix
+                                    query.replace(f'"{object_name}"', f'"{current_schema}".{object_name.upper()}')
+                                        .replace(f"'{object_name}'", f'"{current_schema}".{object_name.upper()}')
+                                        .replace(object_name, f'"{current_schema}".{object_name.upper()}'),
+                                    # With database and schema prefix
+                                    query.replace(f'"{object_name}"', f'"{current_db}"."{current_schema}".{object_name.upper()}')
+                                        .replace(f"'{object_name}'", f'"{current_db}"."{current_schema}".{object_name.upper()}')
+                                        .replace(object_name, f'"{current_db}"."{current_schema}".{object_name.upper()}')
+                                ]
+                                
+                                # Try each variation
+                                for modified_query in variations:
+                                    try:
+                                        cursor.execute(modified_query)
+                                        results = cursor.fetchall()
+                                        columns = [desc[0] for desc in cursor.description]
+                                        break
+                                    except Exception:
+                                        continue
+                                else:
+                                    # If all variations fail, try to set the schema explicitly
+                                    try:
+                                        cursor.execute(f'USE SCHEMA "{current_schema}"')
+                                        cursor.execute(query)
+                                        results = cursor.fetchall()
+                                        columns = [desc[0] for desc in cursor.description]
+                                    except Exception:
+                                        return {
+                                            'error': f'Table or view "{object_name}" does not exist or you do not have access to it. Please check the table name and your permissions. Current database: {current_db}, Current schema: {current_schema}',
+                                            'row_count': 0,
+                                            'duplicates': {'count': 0, 'details': []},
+                                            'null_values': {'details': {}}
+                                        }
+                        elif "Invalid identifier" in error_msg:
+                            return {
+                                'error': 'Invalid column or table name. Please check your query.',
+                                'row_count': 0,
+                                'duplicates': {'count': 0, 'details': []},
+                                'null_values': {'details': {}}
+                            }
+                        else:
+                            return {
+                                'error': f'Snowflake query error: {error_msg}',
+                                'row_count': 0,
+                                'duplicates': {'count': 0, 'details': []},
+                                'null_values': {'details': {}}
+                            }
 
                 if not results:
                     return {
@@ -946,9 +1077,9 @@ class DataValidator:
                     'null_values': self._check_null_values(df),
                     'date_issues': self._check_basic_dates(df),
                     'anomalies': self._check_outliers(df),
-                    'timeliness': self._check_basic_timeliness(df),  # Remove table-specific rules for custom queries
+                    'timeliness': self._check_basic_timeliness(df),
                     'row_count': total_rows,
-                    'preview_limit': 100  # Only limit the preview of detailed results
+                    'preview_limit': 100
                 }
                 
                 # Only limit the preview records while keeping full counts
@@ -977,8 +1108,7 @@ class DataValidator:
                     'row_count': 0,
                     'duplicates': {'count': 0, 'details': []},
                     'null_values': {'details': {}},
-                    'date_issues': {},
-                    'row_count': 0
+                    'date_issues': {}
                 }
 
     def validate_schema(self, schema: str) -> Dict[str, Any]:

@@ -85,6 +85,7 @@ class DatabaseConnector:
                     "warehouse": warehouse,
                     "role": role,
                     "database": database,
+                    "schema": "READER",  # Set default schema to READER
                     "insecure_mode": False,  # Enable SSL
                     "protocol": "https"
                 }
@@ -141,6 +142,40 @@ class DatabaseConnector:
         except Exception as e:
             raise ConnectionError(f"Unexpected error while connecting to database: {str(e)}")
 
+    def _add_schema_prefix(self, query, schema='reader'):
+        """Add schema prefix to table references in a query if not already present"""
+        import sqlparse
+        from sqlparse.sql import Identifier, Token
+        from sqlparse.tokens import Name
+
+        # Parse the SQL query
+        parsed = sqlparse.parse(query)[0]
+        modified_query = query
+
+        # Find all table references (identifiers that are not already schema-qualified)
+        table_refs = []
+        for token in parsed.flatten():
+            if isinstance(token, Identifier):
+                # Check if this is a table reference (not schema-qualified)
+                if '.' not in token.value and token.value.lower() not in ['information_schema', 'pg_catalog']:
+                    table_refs.append(token.value)
+            elif token.ttype == Name and token.value.lower() not in ['information_schema', 'pg_catalog']:
+                # Simple table references might appear as Name tokens
+                if not any(token.value.lower() == kw.lower() for kw in ['select', 'from', 'where', 'and', 'or', 'join']):
+                    table_refs.append(token.value)
+
+        # Add schema prefix to each table reference
+        for table in table_refs:
+            # Only add schema if it's not already schema-qualified
+            if f"{schema}.{table}" not in modified_query and f"\"{schema}\".{table}" not in modified_query:
+                modified_query = modified_query.replace(f" {table} ", f" {schema}.{table} ")
+                modified_query = modified_query.replace(f"({table} ", f"({schema}.{table} ")
+                modified_query = modified_query.replace(f" {table})", f" {schema}.{table})")
+                modified_query = modified_query.replace(f" {table},", f" {schema}.{table},")
+                modified_query = modified_query.replace(f"({table},", f"({schema}.{table},")
+
+        return modified_query
+
     def get_tables(self, schema='public'):
         """Get all tables in the database"""
         if self.db_type == DatabaseType.POSTGRES:
@@ -154,16 +189,18 @@ class DatabaseConnector:
                 results = conn.run(query.format(schema))
                 return [row[0] for row in results]
         else:  # Snowflake
+            # For Snowflake, ensure schema name is uppercase and properly quoted
+            schema_name = f'"{schema.upper()}"'
             query = f"""
                 SELECT table_name 
                 FROM information_schema.tables 
-                WHERE table_schema = '{schema.upper()}'
+                WHERE table_schema = {schema_name}
                 ORDER BY table_name;
             """
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query)
-                return [row[0] for row in cursor.fetchall()]
+                return [row[0].upper() for row in cursor.fetchall()]  # Ensure consistent casing
 
     def get_table_columns(self, table_name):
         """Get all columns and their data types for a table"""
@@ -178,16 +215,18 @@ class DatabaseConnector:
                 columns = [(col[0], col[1]) for col in conn.run(query)]
                 return columns
         else:  # Snowflake
+            # For Snowflake, ensure table name is uppercase and properly quoted
+            table_name = f'"{table_name.upper()}"'
             query = f"""
                 SELECT column_name, data_type
                 FROM information_schema.columns 
-                WHERE table_name = '{table_name.upper()}'
+                WHERE table_name = {table_name}
                 ORDER BY ordinal_position
             """
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query)
-                return [(row[0], row[1]) for row in cursor.fetchall()]
+                return [(row[0].upper(), row[1]) for row in cursor.fetchall()]  # Ensure consistent casing
 
     def get_primary_key_columns(self, table_name):
         """Get primary key and unique columns for a table"""
