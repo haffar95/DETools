@@ -608,7 +608,7 @@ class DataValidator:
         # Add columns that have explicit date-related names
         date_related_names = ['date', 'created', 'updated', 'timestamp', 'time']
         for col in df.columns:
-            col_lower = col.lower()
+            col_lower = str(col).lower()
             # Only add if it's not already in date_columns and has a date-related name
             if col not in date_columns and any(name in col_lower for name in date_related_names):
                 # Check if the column actually contains date-like values
@@ -623,12 +623,15 @@ class DataValidator:
 
         for col in date_columns:
             try:
+                # Convert column to string type first
+                col_values = df[col].astype(str)
+                
                 # Try each format until one works
                 dates = None
                 valid_format = None
                 for fmt in date_formats:
                     try:
-                        dates = pd.to_datetime(df[col], format=fmt, errors='raise')
+                        dates = pd.to_datetime(col_values, format=fmt, errors='raise')
                         valid_format = fmt
                         break
                     except ValueError:
@@ -637,7 +640,7 @@ class DataValidator:
                 # If no format worked, use ISO format as a last resort
                 if dates is None:
                     try:
-                        dates = pd.to_datetime(df[col], format='%Y-%m-%d', errors='raise')
+                        dates = pd.to_datetime(col_values, format='%Y-%m-%d', errors='raise')
                     except ValueError:
                         # If ISO format fails, mark as invalid
                         dates = pd.Series([pd.NaT] * len(df))
@@ -650,7 +653,8 @@ class DataValidator:
                         'values': invalid_dates[:5],  # Show only first 5 examples
                         'expected_format': valid_format if valid_format else 'unknown'
                     }
-            except:
+            except Exception as e:
+                print(f"Error processing column {col}: {str(e)}")
                 continue
 
         return date_issues
@@ -670,6 +674,9 @@ class DataValidator:
         elif hasattr(data, 'dtype') and np.issubdtype(data.dtype, np.integer):
             return int(data)
         elif hasattr(data, 'dtype') and np.issubdtype(data.dtype, np.floating):
+            return float(data)
+        # Add Decimal handling
+        elif hasattr(data, 'as_tuple'):  # This identifies Decimal objects
             return float(data)
         return data
 

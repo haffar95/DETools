@@ -1,9 +1,44 @@
+# Core dependencies
 Flask==2.0.1
-Werkzeug==3.0.1
-Jinja2>=3.0.0
-click>=8.0.0
-itsdangerous>=2.0.0
-pg8000==1.29.1
-numpy>=1.24.0
-pandas>=2.0.0 
-snowflake-connector-python
+Werkzeug==2.0.1
+Jinja2==3.1.5
+click==8.1.8
+itsdangerous==2.2.0
+MarkupSafe==3.0.2
+Flask-Cors==5.0.0
+
+# Database connectors
+snowflake-connector-python==3.13.2
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.37
+
+# Data processing and analysis
+pandas==2.2.3
+numpy==2.2.1
+python-dateutil==2.9.0.post0
+pytz==2024.2
+
+# Environment and configuration
+python-dotenv==1.0.1
+cryptography==44.0.0
+
+# Utilities
+requests==2.32.3
+urllib3==2.3.0
+certifi==2024.12.14
+charset-normalizer==3.4.1
+idna==3.10
+
+# Development and testing
+pytest==8.3.5
+pytest-mock==3.14.0
+
+# Type hints
+typing-extensions==4.12.2
+
+# Security
+PyJWT==2.10.1
+bcrypt==4.3.0
+
+# Caching and performance
+cachetools==5.0.0

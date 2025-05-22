@@ -1,0 +1,58 @@
+2025-05-19 18:46:53,485 - WARNING -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-05-19 18:46:53,486 - INFO -  * Running on http://20.20.174.54:5001/ (Press CTRL+C to quit)
+2025-05-19 18:46:53,486 - INFO -  * Restarting with stat
+2025-05-19 18:46:53,904 - WARNING -  * Debugger is active!
+2025-05-19 18:46:53,910 - INFO -  * Debugger PIN: 468-918-773
+2025-05-19 18:46:55,418 - INFO - 127.0.0.1 - - [19/May/2025 18:46:55] "[32mGET /admin HTTP/1.1[0m" 302 -
+2025-05-19 18:46:55,459 - INFO - 127.0.0.1 - - [19/May/2025 18:46:55] "GET /login HTTP/1.1" 200 -
+2025-05-19 18:46:55,473 - INFO - 127.0.0.1 - - [19/May/2025 18:46:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:46:55,509 - INFO - 127.0.0.1 - - [19/May/2025 18:46:55] "[36mGET /static/images/wuduh_logo.jpeg HTTP/1.1[0m" 304 -
+2025-05-19 18:46:58,371 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "[32mPOST /login HTTP/1.1[0m" 302 -
+2025-05-19 18:46:58,383 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "GET /dashboard HTTP/1.1" 200 -
+2025-05-19 18:46:58,402 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:46:58,403 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "[36mGET /static/images/Wuduh_Final_Logo.png HTTP/1.1[0m" 304 -
+2025-05-19 18:46:58,409 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2025-05-19 18:46:58,420 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "GET /api/current-database HTTP/1.1" 200 -
+2025-05-19 18:46:58,421 - INFO - 127.0.0.1 - - [19/May/2025 18:46:58] "GET /api/database-configs HTTP/1.1" 200 -
+2025-05-19 18:47:01,190 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "GET /admin HTTP/1.1" 200 -
+2025-05-19 18:47:01,206 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:47:01,206 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "[36mGET /static/images/Wuduh_Final_Logo.png HTTP/1.1[0m" 304 -
+2025-05-19 18:47:01,207 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2025-05-19 18:47:01,222 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "GET /api/current-database HTTP/1.1" 200 -
+2025-05-19 18:47:01,223 - INFO - 127.0.0.1 - - [19/May/2025 18:47:01] "GET /api/database-configs HTTP/1.1" 200 -
+2025-05-19 18:47:06,093 - INFO -  * Detected change in '/Users/osamahaffar/Desktop/Postgres_Validation_Report/app/validation/validators.py', reloading
+2025-05-19 18:47:06,173 - INFO -  * Restarting with stat
+2025-05-19 18:47:06,602 - WARNING -  * Debugger is active!
+2025-05-19 18:47:06,608 - INFO -  * Debugger PIN: 468-918-773
+2025-05-19 18:47:07,632 - INFO -  * Detected change in '/Users/osamahaffar/Desktop/Postgres_Validation_Report/app/validation/validators.py', reloading
+2025-05-19 18:47:07,693 - INFO -  * Restarting with stat
+2025-05-19 18:47:08,082 - WARNING -  * Debugger is active!
+2025-05-19 18:47:08,088 - INFO -  * Debugger PIN: 468-918-773
+2025-05-19 18:47:40,489 - INFO -  * Detected change in '/Users/osamahaffar/Desktop/Postgres_Validation_Report/app/validation/validators.py', reloading
+2025-05-19 18:47:40,559 - INFO -  * Restarting with stat
+2025-05-19 18:47:40,994 - WARNING -  * Debugger is active!
+2025-05-19 18:47:41,001 - INFO -  * Debugger PIN: 468-918-773
+2025-05-19 18:48:10,426 - INFO - 127.0.0.1 - - [19/May/2025 18:48:10] "[32mGET /admin HTTP/1.1[0m" 302 -
+2025-05-19 18:48:10,433 - INFO - 127.0.0.1 - - [19/May/2025 18:48:10] "GET /login HTTP/1.1" 200 -
+2025-05-19 18:48:10,449 - INFO - 127.0.0.1 - - [19/May/2025 18:48:10] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:48:10,461 - INFO - 127.0.0.1 - - [19/May/2025 18:48:10] "[36mGET /static/images/wuduh_logo.jpeg HTTP/1.1[0m" 304 -
+2025-05-19 18:48:13,595 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "[32mPOST /login HTTP/1.1[0m" 302 -
+2025-05-19 18:48:13,609 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "GET /dashboard HTTP/1.1" 200 -
+2025-05-19 18:48:13,628 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:48:13,629 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "[36mGET /static/images/Wuduh_Final_Logo.png HTTP/1.1[0m" 304 -
+2025-05-19 18:48:13,634 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2025-05-19 18:48:13,642 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "GET /api/current-database HTTP/1.1" 200 -
+2025-05-19 18:48:13,643 - INFO - 127.0.0.1 - - [19/May/2025 18:48:13] "GET /api/database-configs HTTP/1.1" 200 -
+2025-05-19 18:48:18,806 - INFO - 127.0.0.1 - - [19/May/2025 18:48:18] "[32mPOST /select-database HTTP/1.1[0m" 302 -
+2025-05-19 18:48:19,276 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "GET /dashboard HTTP/1.1" 200 -
+2025-05-19 18:48:19,735 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "GET /dashboard HTTP/1.1" 200 -
+2025-05-19 18:48:19,749 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2025-05-19 18:48:19,749 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "[36mGET /static/images/Wuduh_Final_Logo.png HTTP/1.1[0m" 304 -
+2025-05-19 18:48:19,750 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2025-05-19 18:48:19,763 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "GET /api/database-configs HTTP/1.1" 200 -
+2025-05-19 18:48:19,763 - INFO - 127.0.0.1 - - [19/May/2025 18:48:19] "GET /api/current-database HTTP/1.1" 200 -
+2025-05-19 18:48:40,127 - INFO -  * Detected change in '/Users/osamahaffar/Desktop/Postgres_Validation_Report/app/validation/validators.py', reloading
+2025-05-19 18:48:40,190 - INFO -  * Restarting with stat
+2025-05-20 15:49:32,819 - INFO -  * Restarting with stat
+2025-05-20 15:57:59,884 - INFO -  * Restarting with stat
