@@ -588,7 +588,8 @@ class DataValidator:
                         timeliness_issues['newest_record'] = dates.max().strftime('%Y-%m-%d')
                         timeliness_issues['oldest_record'] = dates.min().strftime('%Y-%m-%d')
                         
-                    # Break after finding the first valid date column
+                    # Break after finding the first valid date column 
+                    # Validators to be checked out later on
                     break
             except Exception as e:
                 continue
