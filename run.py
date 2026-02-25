@@ -340,7 +340,11 @@ def select_database():
                 user=selected_config['user'],
                 password=selected_config['password'],
                 database=selected_config['database'],
-                db_type='postgres'
+                db_type='postgres',
+                ssh_host=selected_config.get('ssh_host'),
+                ssh_user=selected_config.get('ssh_user'),
+                ssh_password=selected_config.get('ssh_password'),
+                ssh_port=selected_config.get('ssh_port')
             )
         else:  # Snowflake
             db.update_connection(

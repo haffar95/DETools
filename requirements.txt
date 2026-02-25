@@ -34,7 +34,7 @@ pytest==8.3.5
 pytest-mock==3.14.0
 
 # Type hints
-typing-extensions==4.12.2
+typing-extensions==4.14.0
 
 # Security
 PyJWT==2.10.1
@@ -42,3 +42,8 @@ bcrypt==4.3.0
 
 # Caching and performance
 cachetools==5.0.0
+
+# SSH tunneling for Postgres
+sshtunnel==0.4.0
+# Paramiko 3.x removed DSSKey; sshtunnel expects it. Pin <3.
+paramiko==2.12.0

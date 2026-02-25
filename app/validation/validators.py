@@ -118,6 +118,10 @@ class DataValidator:
                     'port': config.get('port', ''),
                     'user': config['user'],
                     'password': config['password'],
+                    'ssh_host': config.get('ssh_host'),
+                    'ssh_user': config.get('ssh_user'),
+                    'ssh_password': config.get('ssh_password'),
+                    'ssh_port': config.get('ssh_port'),
                     'account': config.get('account'),
                     'warehouse': config.get('warehouse'),
                     'role': config.get('role'),
@@ -127,7 +131,8 @@ class DataValidator:
         return configs
 
     def save_database_config(self, db_name: str, db_type: str, db_host: str, db_port: str, db_user: str, db_password: str, 
-                           db_account: str = None, db_warehouse: str = None, db_role: str = None, db_database: str = None, creator: str = None):
+                           db_account: str = None, db_warehouse: str = None, db_role: str = None, db_database: str = None, creator: str = None,
+                           ssh_host: str = None, ssh_user: str = None, ssh_password: str = None, ssh_port: Union[str, int, None] = None):
         """Save a new database configuration with user-specific naming"""
         if not creator:
             raise ValueError("Creator (user) is required to save database configuration")
@@ -144,6 +149,10 @@ class DataValidator:
             'port': db_port,
             'user': db_user,
             'password': db_password,
+            'ssh_host': ssh_host,
+            'ssh_user': ssh_user,
+            'ssh_password': ssh_password,
+            'ssh_port': ssh_port,
             'account': db_account,
             'warehouse': db_warehouse,
             'role': db_role,
@@ -188,7 +197,11 @@ class DataValidator:
                     account=config.get('account'),
                     warehouse=config.get('warehouse'),
                     role=config.get('role'),
-                    database=config.get('database')
+                    database=config.get('database'),
+                    ssh_host=config.get('ssh_host'),
+                    ssh_user=config.get('ssh_user'),
+                    ssh_password=config.get('ssh_password'),
+                    ssh_port=int(config.get('ssh_port')) if config.get('ssh_port') else 22
                 )
                 return True
         return False
@@ -668,14 +681,21 @@ class DataValidator:
             return [self._ensure_serializable(item) for item in data]
         elif isinstance(data, (pd.Timestamp, datetime, pd.Series)):
             return str(data)
+        # Handle Python and NumPy NaN/Inf first
+        elif isinstance(data, (float, np.floating)):
+            if np.isnan(data) or np.isinf(data):
+                return None
+            return float(data)
         elif pd.isna(data):
-            return None
-        elif isinstance(data, float) and np.isnan(data):
             return None
         elif hasattr(data, 'dtype') and np.issubdtype(data.dtype, np.integer):
             return int(data)
         elif hasattr(data, 'dtype') and np.issubdtype(data.dtype, np.floating):
-            return float(data)
+            # Fallback for NumPy floats not caught above
+            value = float(data)
+            if np.isnan(value) or np.isinf(value):
+                return None
+            return value
         # Add Decimal handling
         elif hasattr(data, 'as_tuple'):  # This identifies Decimal objects
             return float(data)

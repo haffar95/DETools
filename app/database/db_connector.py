@@ -1,4 +1,10 @@
 import pg8000.native
+import ssl
+from contextlib import contextmanager
+try:
+    from sshtunnel import SSHTunnelForwarder
+except Exception:
+    SSHTunnelForwarder = None
 import snowflake.connector
 from config.config import Config
 import socket
@@ -18,6 +24,8 @@ class DatabaseConnector:
         self.snowflake_params = {}  # Will store Snowflake specific parameters
         self.connection = None
         self.current_database = None
+        self._use_ssh_tunnel = False
+        self._ssh_params = {}
         self.config_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'database_configs.json')
         self.config = {}  # Initialize config dictionary
         self.load_config()
@@ -39,7 +47,8 @@ class DatabaseConnector:
             self.config = {}
 
     def update_connection(self, host: str, port: str, user: str, password: str, db_type: str = "postgres", 
-                         account: str = None, warehouse: str = None, role: str = None, database: str = None):
+                         account: str = None, warehouse: str = None, role: str = None, database: str = None,
+                         ssh_host: str = None, ssh_user: str = None, ssh_password: str = None, ssh_port: int = 22):
         """Update the database connection parameters"""
         try:
             self.db_type = DatabaseType(db_type.lower())
@@ -50,18 +59,35 @@ class DatabaseConnector:
                 if not (0 < port_num < 65536):
                     raise ValueError("Port number must be between 1 and 65535")
 
-                # Test if host is reachable
-                try:
-                    socket.create_connection((host, port_num), timeout=5)
-                except (socket.gaierror, socket.timeout, ConnectionRefusedError) as e:
-                    raise ConnectionError(f"Cannot connect to {host}:{port}. Please check if the host is correct and the port is open.")
+                # Determine if SSH tunneling is used
+                self._use_ssh_tunnel = bool(ssh_host and ssh_user)
+                if self._use_ssh_tunnel:
+                    if SSHTunnelForwarder is None:
+                        raise ConnectionError("SSH tunneling requested but 'sshtunnel' is not installed. Please install sshtunnel.")
+                    # Store SSH parameters
+                    self._ssh_params = {
+                        "ssh_address_or_host": (ssh_host, int(ssh_port) if ssh_port else 22),
+                        "ssh_username": ssh_user,
+                        "ssh_password": ssh_password,
+                        "remote_bind_address": (host, port_num)
+                    }
+                else:
+                    # Test if host is reachable directly
+                    try:
+                        socket.create_connection((host, port_num), timeout=5)
+                    except (socket.gaierror, socket.timeout, ConnectionRefusedError) as e:
+                        raise ConnectionError(f"Cannot connect to {host}:{port}. Please check if the host is correct and the port is open.")
 
+                # Use SSL but do not verify certificates to support providers with self-signed chains
+                unverified_ssl = ssl._create_unverified_context()
+                unverified_ssl.check_hostname = False
                 self.conn_params.update({
                     "host": host,
                     "port": port_num,
                     "user": user,
                     "password": password,
-                    "database": database
+                    "database": database,
+                    "ssl_context": unverified_ssl
                 })
             else:  # Snowflake
                 if not account:
@@ -118,6 +144,8 @@ class DatabaseConnector:
             if self.db_type == DatabaseType.POSTGRES:
                 if not all(key in self.conn_params for key in ['host', 'port', 'user', 'password']):
                     raise ConnectionError("Incomplete PostgreSQL connection parameters. Please configure all required fields.")
+                if self._use_ssh_tunnel:
+                    return self._get_ssh_tunneled_pg_connection()
                 return pg8000.native.Connection(**self.conn_params)
             else:  # Snowflake
                 if not all(key in self.snowflake_params for key in ['account', 'user', 'password', 'warehouse', 'role', 'database']):
@@ -141,6 +169,38 @@ class DatabaseConnector:
                 raise ConnectionError(f"Database connection error: {error_msg}")
         except Exception as e:
             raise ConnectionError(f"Unexpected error while connecting to database: {str(e)}")
+
+    @contextmanager
+    def _get_ssh_tunneled_pg_connection(self):
+        """Open an SSH tunnel and return a pg8000 connection within a context manager."""
+        # Create and start tunnel
+        forwarder = SSHTunnelForwarder(
+            self._ssh_params["ssh_address_or_host"],
+            ssh_username=self._ssh_params["ssh_username"],
+            ssh_password=self._ssh_params.get("ssh_password"),
+            remote_bind_address=self._ssh_params["remote_bind_address"],
+            local_bind_address=("127.0.0.1", 0)
+        )
+        forwarder.start()
+        try:
+            local_port = forwarder.local_bind_port
+            params = dict(self.conn_params)
+            params.update({
+                "host": "127.0.0.1",
+                "port": int(local_port)
+            })
+            conn = pg8000.native.Connection(**params)
+            try:
+                with conn:
+                    yield conn
+            finally:
+                # pg8000 context manager handles connection close
+                pass
+        finally:
+            try:
+                forwarder.stop()
+            except Exception:
+                pass
 
     def _add_schema_prefix(self, query, schema='reader'):
         """Add schema prefix to table references in a query if not already present"""
@@ -390,10 +450,11 @@ class DatabaseConnector:
         """Get all schemas in the database"""
         if self.db_type == DatabaseType.POSTGRES:
             query = """
-                SELECT schema_name 
-                FROM information_schema.schemata 
-                WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-                ORDER BY schema_name;
+                SELECT nspname AS schema_name
+                FROM pg_catalog.pg_namespace
+                WHERE nspname NOT LIKE 'pg_%'
+                  AND nspname <> 'information_schema'
+                ORDER BY nspname;
             """
             with self.get_connection() as conn:
                 results = conn.run(query)
