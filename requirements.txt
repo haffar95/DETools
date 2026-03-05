@@ -11,6 +11,7 @@ Flask-Cors==5.0.0
 snowflake-connector-python==3.13.2
 psycopg2-binary==2.9.10
 SQLAlchemy==2.0.37
+pg8000==1.29.1
 
 # Data processing and analysis
 pandas==2.2.3
@@ -43,7 +44,10 @@ bcrypt==4.3.0
 # Caching and performance
 cachetools==5.0.0
 
-# SSH tunneling for Postgres
+# SSH tunneling for Postgres (as used in this project)
 sshtunnel==0.4.0
-# Paramiko 3.x removed DSSKey; sshtunnel expects it. Pin <3.
+# Paramiko version pinned here because sshtunnel in this project relies on pre-3.x APIs
 paramiko==2.12.0
+
+# SQL parsing (used by db_connector.py; version not specified in this project)
+sqlparse
