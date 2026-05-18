@@ -1,147 +1,137 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/overview.css') }}">
+{% endblock %}
+
 {% block content %}
-{% if needs_connection %}
-<div id="connection-popup" class="modal">
-    <div class="modal-content">
-        <h2>Database Connection Required</h2>
-        <p>Please select or add a database connection to continue.</p>
-        <div class="modal-actions">
-            <a href="{{ url_for('database_config') }}" class="btn btn-primary">Configure Database</a>
-            <button onclick="document.getElementById('connection-popup').style.display='none'" class="btn btn-secondary">Close</button>
+<div class="ov-page" id="valPage">
+
+    <!-- Page header -->
+    <div class="ov-header">
+        <div>
+            <h4 class="mb-0 fw-semibold"><i class="bi bi-shield-check me-2 text-primary"></i>Data Validation</h4>
+            <div class="text-muted" style="font-size:0.85rem">Select a table and run quality checks, or write custom SQL</div>
         </div>
+        <ul class="nav nav-pills gap-1" id="valModeTabs">
+            <li class="nav-item">
+                <button class="nav-link active py-1 px-3" id="tabStandard" onclick="switchValMode('standard')">
+                    <i class="bi bi-check2-square me-1"></i>Standard
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-1 px-3" id="tabQuery" onclick="switchValMode('query')">
+                    <i class="bi bi-code-slash me-1"></i>Query
+                </button>
+            </li>
+        </ul>
     </div>
-</div>
 
-<style>
-.modal {
-    display: block;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-}
-
-.modal-content {
-    background-color: #fefefe;
-    margin: 15% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    width: 80%;
-    max-width: 500px;
-    border-radius: 8px;
-    text-align: center;
-}
-
-.modal-actions {
-    margin-top: 20px;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-}
-
-.btn {
-    padding: 10px 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: none;
-    font-size: 14px;
-}
-
-.btn-primary {
-    background-color: #007bff;
-    color: white;
-    text-decoration: none;
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-    color: white;
-}
-</style>
-{% endif %}
-<div class="validation-container">
-    <h1>Data Validation Dashboard</h1>
-    <div id="standard-mode" class="mode-content active">
-        <div class="selection-panel">
-            <div class="select-group">
-                <label for="schemaSelect">Select Schema:</label>
-                <select id="schemaSelect" style="width: 400px;" class="searchable-select">
-                    <option value="">Select a schema</option>
-                    {% for schema in schemas %}
-                    <option value="{{ schema }}">{{ schema }}</option>
-                    {% endfor %}
-                </select>
+    <!-- ── Standard Mode ─────────────────────────────────────────────────── -->
+    <div id="modeStandard">
+        <div class="ov-card mb-3">
+            <div class="ov-card-header">
+                <span class="fw-semibold"><i class="bi bi-funnel me-2 text-primary"></i>Select Source</span>
+                <span id="valSourceMeta" class="text-muted" style="font-size:0.78rem"></span>
             </div>
-
-            <div class="select-group">
-                <label for="tableSelect">Select Table:</label>
-                <select id="tableSelect" style="width: 400px;" class="searchable-select" disabled>
-                    <option value="">Select a table</option>
-                </select>
-            </div>
-
-            <div class="select-group" id="keyColumnGroup" style="display: none;">
-                <label for="keySelect">Primary/Unique Key (Optional):</label>
-                <select id="keySelect" style="width: 400px;">
-                    <option value="">Select identifier column</option>
-                </select>
-                <small class="field-info"></small>
-            </div>
-
-            <div class="select-group" id="dateColumnGroup" style="display: none;">
-                <label for="dateSelect">Date Filter (Optional):</label>
-                <select id="dateSelect" style="width: 400px;">
-                    <option value="">Select date column</option>
-                </select>
-                <small class="field-info"></small>
-            </div>
-
-            <div class="select-group" id="dateValueGroup" style="display: none;">
-                <label>Select Date Range:</label>
-                <div class="date-range-container">
-                    <div class="date-input-group">
-                        <label for="startDate">From:</label>
-                        <input type="date" id="startDate" style="width: 190px;">
+            <div style="padding:16px">
+                <div class="row g-3">
+                    <div class="col-sm-6 col-lg-4">
+                        <label class="ov-label">Database</label>
+                        <select class="form-select form-select-sm" id="valDbSelect" onchange="onValDbChange()">
+                            <option value="">— loading —</option>
+                        </select>
                     </div>
-                    <div class="date-input-group">
-                        <label for="endDate">To:</label>
-                        <input type="date" id="endDate" style="width: 190px;">
+                    <div class="col-sm-6 col-lg-4">
+                        <label class="ov-label">Schema</label>
+                        <select class="form-select form-select-sm" id="valSchemaSelect" onchange="onValSchemaChange()" disabled>
+                            <option value="">— select schema —</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                        <label class="ov-label">Table</label>
+                        <select class="form-select form-select-sm" id="valTableSelect" onchange="onValTableChange()" disabled>
+                            <option value="">— select table —</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Options (revealed after table is picked) -->
+                <div id="valOptions" style="display:none">
+                    <hr class="my-3">
+                    <div class="row g-3">
+                        <div class="col-sm-6 col-lg-4">
+                            <label class="ov-label">Key Column <span class="text-muted fw-normal">(optional)</span></label>
+                            <select class="form-select form-select-sm" id="valKeySelect">
+                                <option value="">— none —</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 col-lg-4">
+                            <label class="ov-label">Foreign Key <span class="text-muted fw-normal">(optional)</span></label>
+                            <select class="form-select form-select-sm" id="valFkSelect">
+                                <option value="">— none —</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 col-lg-4">
+                            <label class="ov-label">Date Column <span class="text-muted fw-normal">(optional)</span></label>
+                            <select class="form-select form-select-sm" id="valDateColSelect" onchange="onValDateColChange()">
+                                <option value="">— none —</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-0" id="valDateRange" style="display:none">
+                        <div class="col-sm-4 col-lg-2">
+                            <label class="ov-label">From</label>
+                            <input type="date" class="form-control form-control-sm" id="valStartDate">
+                        </div>
+                        <div class="col-sm-4 col-lg-2">
+                            <label class="ov-label">To</label>
+                            <input type="date" class="form-control form-control-sm" id="valEndDate">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-primary d-inline-flex align-items-center gap-2"
+                                id="valRunBtn" onclick="runStandardValidation()">
+                            <i class="bi bi-play-fill"></i>Run Validation
+                        </button>
                     </div>
                 </div>
             </div>
-
-            <div class="select-group" id="foreignKeyGroup" style="display: none;">
-                <label for="foreignKeySelect">Foreign Key (Optional):</label>
-                <select id="foreignKeySelect" style="width: 400px;">
-                    <option value="">Select foreign key column</option>
-                </select>
-                <small class="field-info"></small>
-            </div>
-
-            <button id="validateBtn" style="display: none;">Validate</button>
         </div>
 
-        <div id="validationResults" class="results-panel">
-        </div>
+        <div id="valResults"></div>
     </div>
 
-    <div id="query-mode" class="mode-content">
-        <div class="selection-panel">
-            <div class="query-section">
-                <h3>Query Validation</h3>
-                <div class="query-input">
-                    <label for="sqlQuery">SQL Query:</label>
-                    <textarea id="sqlQuery" rows="4" placeholder="Enter your SQL query here..."></textarea>
+    <!-- ── Query Mode ─────────────────────────────────────────────────────── -->
+    <div id="modeQuery" style="display:none">
+        <div class="ov-card mb-3">
+            <div class="ov-card-header">
+                <span class="fw-semibold"><i class="bi bi-code-slash me-2" style="color:#f59e0b"></i>Query Validation</span>
+            </div>
+            <div style="padding:16px">
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="ov-label">Database</label>
+                        <select class="form-select form-select-sm" id="qryDbSelect">
+                            <option value="">— loading —</option>
+                        </select>
+                    </div>
                 </div>
-                <button id="validateQueryBtn">Validate Query</button>
+                <div class="mb-3">
+                    <label class="ov-label">SQL Query</label>
+                    <textarea class="form-control form-control-sm font-monospace" id="sqlQuery" rows="6"
+                              placeholder="SELECT * FROM my_schema.my_table WHERE ..."></textarea>
+                </div>
+                <button class="btn btn-sm btn-warning text-dark d-inline-flex align-items-center gap-2"
+                        id="qryRunBtn" onclick="runQueryValidation(this)">
+                    <i class="bi bi-play-fill"></i>Validate Query
+                </button>
             </div>
         </div>
-        <div id="queryValidationResults" class="results-panel">
-        </div>
+        <div id="qryResults"></div>
     </div>
-</div>
+
+</div><!-- /.ov-page -->
+
+<script src="{{ url_for('static', filename='js/validation.js') }}"></script>
 {% endblock %}

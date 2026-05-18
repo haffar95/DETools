@@ -12,8 +12,13 @@ __pycache__/
 *backup/
 *backup
 
+# Sensitive config
+database_configs.json
+users.json
+
 # Environment
 .env
+.venv/
 venv/
 ENV/
 

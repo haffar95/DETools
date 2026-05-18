@@ -288,6 +288,30 @@ class DatabaseConnector:
                 cursor.execute(query)
                 return [(row[0].upper(), row[1]) for row in cursor.fetchall()]  # Ensure consistent casing
 
+    def get_table_columns_with_schema(self, table_name, schema):
+        """Get all columns and their data types for a table within a specific schema"""
+        if self.db_type == DatabaseType.POSTGRES:
+            with self.get_connection() as conn:
+                results = conn.run(
+                    "SELECT column_name, data_type FROM information_schema.columns "
+                    "WHERE table_schema = :schema AND table_name = :table "
+                    "ORDER BY ordinal_position",
+                    schema=schema, table=table_name
+                )
+                return [{'name': col[0], 'type': col[1]} for col in results]
+        else:  # Snowflake
+            schema_upper = schema.upper()
+            table_upper = table_name.upper()
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT column_name, data_type "
+                    "FROM information_schema.columns "
+                    f"WHERE table_schema = '{schema_upper}' AND table_name = '{table_upper}' "
+                    "ORDER BY ordinal_position"
+                )
+                return [{'name': row[0], 'type': row[1]} for row in cursor.fetchall()]
+
     def get_primary_key_columns(self, table_name):
         """Get primary key and unique columns for a table"""
         if self.db_type == DatabaseType.POSTGRES:
@@ -470,6 +494,206 @@ class DatabaseConnector:
                 cursor = conn.cursor()
                 cursor.execute(query)
                 return [row[0] for row in cursor.fetchall()]
+
+    # ------------------------------------------------------------------
+    # Per-config introspection (temporary connections, no side-effects)
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def _get_connection_for_config(self, config, database=None):
+        """Open a temporary connection to any config dict without touching the active connection.
+        Pass `database` to override the database in the config (e.g. to introspect a specific DB)."""
+        db_type = config.get('type', 'postgres').lower()
+
+        if db_type == 'postgres':
+            port_num = int(config.get('port', 5432))
+            unverified_ssl = ssl._create_unverified_context()
+            unverified_ssl.check_hostname = False
+            # Use the explicitly requested database, then config database, then 'postgres' as fallback
+            target_db = database or config.get('database') or 'postgres'
+            conn_params = {
+                'host': config['host'],
+                'port': port_num,
+                'user': config['user'],
+                'password': config['password'],
+                'ssl_context': unverified_ssl,
+                'database': target_db,
+            }
+
+            use_ssh = bool(config.get('ssh_host') and config.get('ssh_user'))
+            if use_ssh and SSHTunnelForwarder is not None:
+                forwarder = SSHTunnelForwarder(
+                    (config['ssh_host'], int(config.get('ssh_port') or 22)),
+                    ssh_username=config['ssh_user'],
+                    ssh_password=config.get('ssh_password'),
+                    remote_bind_address=(config['host'], port_num),
+                    local_bind_address=('127.0.0.1', 0),
+                )
+                forwarder.start()
+                try:
+                    p = dict(conn_params)
+                    p.update({'host': '127.0.0.1', 'port': forwarder.local_bind_port})
+                    conn = pg8000.native.Connection(**p)
+                    try:
+                        yield conn
+                    finally:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        forwarder.stop()
+                    except Exception:
+                        pass
+            else:
+                conn = pg8000.native.Connection(**conn_params)
+                try:
+                    yield conn
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+        else:  # Snowflake
+            account = config.get('account', '')
+            if '.snowflakecomputing.com' in account:
+                account = account.split('.')[0]
+            if account and '.' not in account:
+                account = f"{account}.us-east-1"
+            target_db = database or config.get('database', '')
+            sf_params = {
+                'account': account,
+                'user': config['user'],
+                'password': config['password'],
+                'warehouse': config.get('warehouse', ''),
+                'role': config.get('role', ''),
+                'database': target_db,
+                'insecure_mode': False,
+                'protocol': 'https',
+            }
+            conn = snowflake.connector.connect(**sf_params)
+            try:
+                yield conn
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def get_databases_for_config(self, config):
+        """Return all database names on the server for an arbitrary config dict."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT datname FROM pg_database "
+                    "WHERE datistemplate = false ORDER BY datname"
+                )
+                return [row[0] for row in results]
+            else:  # Snowflake
+                cursor = conn.cursor()
+                cursor.execute("SHOW DATABASES")
+                # SHOW DATABASES result: created_on, name, ...
+                return [row[1] for row in cursor.fetchall()]
+
+    def get_schemas_for_config(self, config, database=None):
+        """Return schema names for an arbitrary config dict, optionally scoped to a specific database."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config, database=database) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT nspname FROM pg_catalog.pg_namespace "
+                    "WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema' "
+                    "ORDER BY nspname"
+                )
+                return [row[0] for row in results]
+            else:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT schema_name FROM information_schema.schemata "
+                    "WHERE schema_name NOT IN ('INFORMATION_SCHEMA') ORDER BY schema_name"
+                )
+                return [row[0] for row in cursor.fetchall()]
+
+    def get_tables_for_config(self, config, schema, database=None):
+        """Return table names in a schema for an arbitrary config dict."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config, database=database) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :schema ORDER BY table_name",
+                    schema=schema,
+                )
+                return [row[0] for row in results]
+            else:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"SELECT table_name FROM information_schema.tables "
+                    f"WHERE table_schema = '{schema.upper()}' ORDER BY table_name"
+                )
+                return [row[0] for row in cursor.fetchall()]
+
+    def get_routines_for_config(self, config, schema, database=None):
+        """Return routine (function/procedure) names and types in a schema."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config, database=database) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT routine_name, routine_type FROM information_schema.routines "
+                    "WHERE routine_schema = :schema ORDER BY routine_name",
+                    schema=schema,
+                )
+                return [{'name': row[0], 'type': row[1]} for row in results]
+            else:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f'SHOW USER FUNCTIONS IN SCHEMA "{schema.upper()}"')
+                    return [{'name': row[1], 'type': 'FUNCTION'} for row in cursor.fetchall()]
+                except Exception:
+                    return []
+
+    def get_sequences_for_config(self, config, schema, database=None):
+        """Return sequence names in a schema."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config, database=database) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT sequence_name FROM information_schema.sequences "
+                    "WHERE sequence_schema = :schema ORDER BY sequence_name",
+                    schema=schema,
+                )
+                return [row[0] for row in results]
+            else:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f'SHOW SEQUENCES IN SCHEMA "{schema.upper()}"')
+                    return [row[1] for row in cursor.fetchall()]
+                except Exception:
+                    return []
+
+    def get_columns_for_config(self, config, schema, table, database=None):
+        """Return column info for a table in an arbitrary config dict."""
+        db_type = config.get('type', 'postgres').lower()
+        with self._get_connection_for_config(config, database=database) as conn:
+            if db_type == 'postgres':
+                results = conn.run(
+                    "SELECT column_name, data_type FROM information_schema.columns "
+                    "WHERE table_schema = :schema AND table_name = :table "
+                    "ORDER BY ordinal_position",
+                    schema=schema, table=table,
+                )
+                return [{'name': row[0], 'type': row[1]} for row in results]
+            else:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"SELECT column_name, data_type FROM information_schema.columns "
+                    f"WHERE table_schema = '{schema.upper()}' AND table_name = '{table.upper()}' "
+                    f"ORDER BY ordinal_position"
+                )
+                return [{'name': row[0], 'type': row[1]} for row in cursor.fetchall()]
 
     def get_current_database(self):
         """Get the currently selected database"""

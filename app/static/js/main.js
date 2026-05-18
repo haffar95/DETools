@@ -1,10 +1,37 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // This handler is only relevant for the legacy validation page elements.
+    // The new validation page (dashboard.html) uses validation.js instead.
+    const validateBtn = document.getElementById('validateBtn');
+    if (!validateBtn) return;  // not on old validation page — exit early
+
     const schemaSelect = document.getElementById('schemaSelect');
     const tableSelect = document.getElementById('tableSelect');
     const dateSelect = document.getElementById('dateSelect');
-    const validateBtn = document.getElementById('validateBtn');
     const resultsDiv = document.getElementById('validationResults');
     const validateQueryBtn = document.getElementById('validateQueryBtn');
+    const queryDatabaseSelect = document.getElementById('queryDatabase');
+
+    // Populate query database selector from active connection
+    if (queryDatabaseSelect) {
+        fetch('/api/current-database')
+            .then(r => r.json())
+            .then(data => {
+                const connKey = data.selected_db && data.selected_db.name;
+                if (!connKey) return;
+                return fetch('/api/tree/databases?conn=' + encodeURIComponent(connKey));
+            })
+            .then(r => r && r.json())
+            .then(data => {
+                if (!data || !data.databases) return;
+                data.databases.forEach(dbName => {
+                    const opt = document.createElement('option');
+                    opt.value = dbName;
+                    opt.textContent = dbName;
+                    queryDatabaseSelect.appendChild(opt);
+                });
+            })
+            .catch(() => {});
+    }
 
     // Tab switching functionality
     document.querySelectorAll('.nav-item[data-tab]').forEach(button => {
@@ -650,13 +677,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         showLoading('Validating query...');
         try {
+            const selectedDb = queryDatabaseSelect ? queryDatabaseSelect.value : '';
             const response = await fetch('/api/validate-query', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    query: query
+                    query: query,
+                    database: selectedDb || null
                 })
             });
 

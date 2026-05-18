@@ -1,154 +1,235 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/overview.css') }}">
+{% endblock %}
 
 {% block content %}
-{% if needs_connection %}
-<div id="connection-popup" class="modal">
-    <div class="modal-content">
-        <h2>Database Connection Required</h2>
-        <p>Please select or add a database connection to continue.</p>
-        <div class="modal-actions">
-            <a href="{{ url_for('database_config') }}" class="btn btn-primary">Configure Database</a>
-            <button onclick="document.getElementById('connection-popup').style.display='none'" class="btn btn-secondary">Close</button>
+<div class="ov-page">
+
+    <!-- Page header -->
+    <div class="ov-header">
+        <div>
+            <h4 class="mb-0 fw-semibold">Data Quality Overview</h4>
+            <div class="text-muted" style="font-size:0.85rem">Monitor all connections and schema health at a glance</div>
         </div>
-    </div>
-</div>
-
-<style>
-.modal {
-    display: block;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-}
-
-.modal-content {
-    background-color: #fefefe;
-    margin: 15% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    width: 80%;
-    max-width: 500px;
-    border-radius: 8px;
-    text-align: center;
-}
-
-.modal-actions {
-    margin-top: 20px;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-}
-
-.btn {
-    padding: 10px 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: none;
-    font-size: 14px;
-}
-
-.btn-primary {
-    background-color: #007bff;
-    color: white;
-    text-decoration: none;
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-    color: white;
-}
-</style>
-{% endif %}
-<div class="overview-container">
-    <h1>Data Quality Overview</h1>
-
-    <div class="overview-selection-panel">
-        <select id="schemaSelect" class="form-control">
-            <option value="">Select a schema...</option>
-            {% for schema in schemas %}
-            <option value="{{ schema }}">{{ schema }}</option>
-            {% endfor %}
-        </select>
-        <button id="runValidation" class="btn btn-primary">Run Validation</button>
+        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                id="ovRefreshBtn" onclick="loadConnectionHealth()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
     </div>
 
-    <div class="overview-metrics">
-        <div class="metric-card">
-            <h2>Overall DQ Score</h2>
-            <p class="score">-- %</p>
+    <!-- KPI tiles -->
+    <div class="ov-kpis">
+        <div class="ov-kpi-card">
+            <div class="ov-kpi-icon" style="color:#3b82f6"><i class="bi bi-plug-fill"></i></div>
+            <div class="ov-kpi-body">
+                <div class="ov-kpi-value" id="kpiConnTotal">&mdash;</div>
+                <div class="ov-kpi-label">Connections</div>
+            </div>
         </div>
-        <div class="metric-card">
-            <h2>Processed Rows</h2>
-            <p class="score">--</p>
-            <p>Total Rows</p>
+        <div class="ov-kpi-card">
+            <div class="ov-kpi-icon" style="color:#10b981"><i class="bi bi-check-circle-fill"></i></div>
+            <div class="ov-kpi-body">
+                <div class="ov-kpi-value" id="kpiConnHealthy">&mdash;</div>
+                <div class="ov-kpi-label">Reachable</div>
+            </div>
         </div>
-        <div class="metric-card">
-            <h2>Failed Rows</h2>
-            <p class="score">--</p>
-            <p>Failed Validations</p>
+        <div class="ov-kpi-card">
+            <div class="ov-kpi-icon" style="color:#8b5cf6"><i class="bi bi-table"></i></div>
+            <div class="ov-kpi-body">
+                <div class="ov-kpi-value" id="kpiTables">&mdash;</div>
+                <div class="ov-kpi-label">Tables Scanned</div>
+            </div>
         </div>
-        <div class="metric-card">
-            <h2>Processing Time</h2>
-            <p class="score">-- s</p>
-            <p>Total Duration</p>
+        <div class="ov-kpi-card">
+            <div class="ov-kpi-icon" style="color:#f59e0b"><i class="bi bi-stack"></i></div>
+            <div class="ov-kpi-body">
+                <div class="ov-kpi-value" id="kpiRows">&mdash;</div>
+                <div class="ov-kpi-label">Total Rows</div>
+            </div>
         </div>
     </div>
 
-    <div class="table-metrics">
-        <div class="metric-card">
-            <h2>Total Tables</h2>
-            <p class="score">--</p>
-            <p>In Schema</p>
+    <!-- DQ Dimension Circles (populated after scan) -->
+    <div class="ov-dq-circles">
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcCompleteness" cx="40" cy="40" r="28"
+                            stroke="#3b82f6" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctCompleteness">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Completeness</div>
+            <div class="ov-dq-hint" id="dqHintCompleteness">Run a scan</div>
         </div>
-        <div class="metric-card">
-            <h2>Processed Tables</h2>
-            <p class="score">--</p>
-            <p>Successfully Validated</p>
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcAccuracy" cx="40" cy="40" r="28"
+                            stroke="#10b981" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctAccuracy">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Accuracy</div>
+            <div class="ov-dq-hint" id="dqHintAccuracy">Run a scan</div>
         </div>
-        <div class="metric-card">
-            <h2>Skipped Tables</h2>
-            <p class="score">--</p>
-            <p>Failed to Validate</p>
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcConsistency" cx="40" cy="40" r="28"
+                            stroke="#8b5cf6" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctConsistency">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Consistency</div>
+            <div class="ov-dq-hint" id="dqHintConsistency">Run a scan</div>
+        </div>
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcUniqueness" cx="40" cy="40" r="28"
+                            stroke="#f59e0b" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctUniqueness">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Uniqueness</div>
+            <div class="ov-dq-hint" id="dqHintUniqueness">Run a scan</div>
+        </div>
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcFreshness" cx="40" cy="40" r="28"
+                            stroke="#06b6d4" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctFreshness">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Freshness</div>
+            <div class="ov-dq-hint" id="dqHintFreshness">Run a scan</div>
+        </div>
+        <div class="ov-dq-circle">
+            <div class="ov-dq-ring-wrap">
+                <svg viewBox="0 0 80 80" class="ov-dq-svg">
+                    <circle class="ov-dq-bg" cx="40" cy="40" r="28"/>
+                    <circle class="ov-dq-arc" id="dqArcValidity" cx="40" cy="40" r="28"
+                            stroke="#f43f5e" stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+                </svg>
+                <span class="ov-dq-pct" id="dqPctValidity">&mdash;</span>
+            </div>
+            <div class="ov-dq-label">Validity</div>
+            <div class="ov-dq-hint" id="dqHintValidity">Run a scan</div>
         </div>
     </div>
 
-    <div class="skipped-tables-section">
-        <h2>Skipped Tables Details</h2>
-        <div class="skipped-tables-list">
-            <p class="no-data">No skipped tables to display</p>
-        </div>
-    </div>
+    <!-- Main grid: connection health + scanner -->
+    <div class="ov-main-grid">
 
-    <div class="quality-indicators">
-        <div class="indicator-card">
-            <h4>Completeness</h4>
-            <div class="indicator-circle">--</div>
+        <!-- Connection health -->
+        <section class="ov-card">
+            <div class="ov-card-header">
+                <span class="fw-semibold"><i class="bi bi-diagram-2 me-2 text-primary"></i>Connection Health</span>
+                <span id="ovConnStatus" class="text-muted" style="font-size:0.78rem">Loading&hellip;</span>
+            </div>
+            <div id="ovConnectionCards" class="ov-conn-list">
+                <div class="ov-skeleton"></div>
+                <div class="ov-skeleton mt-2"></div>
+            </div>
+        </section>
+
+        <!-- Schema scanner -->
+        <section class="ov-card">
+            <div class="ov-card-header">
+                <span class="fw-semibold"><i class="bi bi-search me-2 text-primary"></i>Schema Scanner</span>
+            </div>
+            <div class="ov-scanner">
+                <div class="ov-scanner-field">
+                    <label class="ov-label">Connection</label>
+                    <select id="ovConnSelect" class="form-select form-select-sm"
+                            onchange="onScannerConnChange()">
+                        <option value="">&mdash; select connection &mdash;</option>
+                    </select>
+                </div>
+                <div class="ov-scanner-field">
+                    <label class="ov-label">Database</label>
+                    <select id="ovDbSelect" class="form-select form-select-sm"
+                            onchange="onScannerDbChange()" disabled>
+                        <option value="">&mdash; select database &mdash;</option>
+                    </select>
+                </div>
+                <div class="ov-scanner-field">
+                    <label class="ov-label">Schema</label>
+                    <select id="ovSchemaSelect" class="form-select form-select-sm"
+                            onchange="onScannerSchemaChange()" disabled>
+                        <option value="">&mdash; select schema &mdash;</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm w-100 mt-2" id="ovRunBtn"
+                        onclick="runOverviewScan()" disabled>
+                    <i class="bi bi-play-fill me-1"></i>Run Scan
+                </button>
+            </div>
+
+            <!-- Scan summary (shown after scan) -->
+            <div id="ovScanSummary" class="ov-scan-summary" style="display:none">
+                <div class="ov-scan-stat">
+                    <div class="ov-scan-stat-val" id="ovStatTables">&mdash;</div>
+                    <div class="ov-scan-stat-label">Tables</div>
+                </div>
+                <div class="ov-scan-stat">
+                    <div class="ov-scan-stat-val" id="ovStatRows">&mdash;</div>
+                    <div class="ov-scan-stat-label">Rows</div>
+                </div>
+                <div class="ov-scan-stat">
+                    <div class="ov-scan-stat-val" id="ovStatErrors">&mdash;</div>
+                    <div class="ov-scan-stat-label">Errors</div>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- /.ov-main-grid -->
+
+    <!-- Table results (full width, shown after scan) -->
+    <section class="ov-card mt-3" id="ovTableSection" style="display:none">
+        <div class="ov-card-header">
+            <span class="fw-semibold"><i class="bi bi-table me-2 text-primary"></i>Table Results</span>
+            <span id="ovTableMeta" class="text-muted" style="font-size:0.78rem"></span>
         </div>
-        <div class="indicator-card">
-            <h4>Timeliness</h4>
-            <div class="indicator-circle">--</div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ov-th-sort" onclick="sortTableResults('name')" data-col="name">
+                            Table <i class="bi bi-chevron-expand ms-1 ov-sort-icon" data-col="name"></i>
+                        </th>
+                        <th class="ov-th-sort text-end" onclick="sortTableResults('col_count')" data-col="col_count">
+                            Columns <i class="bi bi-chevron-expand ms-1 ov-sort-icon" data-col="col_count"></i>
+                        </th>
+                        <th class="ov-th-sort text-end" onclick="sortTableResults('row_count')" data-col="row_count">
+                            Rows <i class="bi bi-chevron-expand ms-1 ov-sort-icon" data-col="row_count"></i>
+                        </th>
+                        <th style="min-width:120px">Share of Schema</th>
+                        <th class="text-center" style="min-width:68px" title="Completeness">Compl.</th>
+                        <th class="text-center" style="min-width:68px" title="Uniqueness">Uniq.</th>
+                        <th class="text-center" style="min-width:68px" title="Freshness">Fresh.</th>
+                        <th class="text-center" style="min-width:68px" title="Validity">Valid.</th>
+                        <th class="text-center" style="min-width:68px" title="Accuracy">Accur.</th>
+                        <th class="text-center" style="min-width:68px" title="Consistency">Consist.</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="ovTableBody"></tbody>
+            </table>
         </div>
-        <div class="indicator-card">
-            <h4>Accuracy</h4>
-            <div class="indicator-circle">--</div>
-        </div>
-        <div class="indicator-card">
-            <h4>Consistency</h4>
-            <div class="indicator-circle">--</div>
-        </div>
-        <div class="indicator-card">
-            <h4>Uniqueness</h4>
-            <div class="indicator-circle">--</div>
-        </div>
-        <div class="indicator-card">
-            <h4>Validity</h4>
-            <div class="indicator-circle">--</div>
-        </div>
-    </div>
-</div>
+    </section>
+
+</div><!-- /.ov-page -->
+
 <script src="{{ url_for('static', filename='js/overview.js') }}"></script>
 {% endblock %}

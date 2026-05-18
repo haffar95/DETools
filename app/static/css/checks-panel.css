@@ -1,0 +1,308 @@
+/* ============================================================
+   DETools — Checks Panel (right drawer)
+   ============================================================ */
+
+/* ── Panel container ───────────────────────────────────────── */
+.checks-panel {
+    position: fixed;
+    top: var(--navbar-height, 56px);
+    right: 0;
+    bottom: 0;
+    width: 400px;
+    background: #fff;
+    border-left: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    z-index: 1020;
+    transform: translateX(100%);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    overflow: hidden;
+}
+
+.checks-panel.open {
+    transform: translateX(0);
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Backdrop (mobile) ──────────────────────────────────────── */
+.cp-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 1019;
+}
+.checks-panel.open ~ .cp-backdrop {
+    display: block;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.cp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #1e293b;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.cp-header-info {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.cp-table-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #fff;
+}
+
+.cp-db-name {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.cp-close-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1rem;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.cp-close-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* ── Summary bar (shown after a run) ────────────────────────── */
+.cp-summary-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+}
+.cp-kpi-badge {
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 2px 10px;
+    border-radius: 20px;
+}
+
+/* ── Body ───────────────────────────────────────────────────── */
+.cp-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* ── Section card ────────────────────────────────────────────── */
+.cp-section {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 14px 16px;
+}
+
+.cp-section-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #64748b;
+    margin-bottom: 10px;
+}
+
+/* ── Threshold inputs row ────────────────────────────────────── */
+.cp-thresholds {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.cp-threshold-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-bottom: 3px;
+    display: block;
+}
+
+/* ── Extra params ────────────────────────────────────────────── */
+.cp-extra-param {
+    margin-bottom: 8px;
+}
+.cp-extra-param label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 3px;
+    display: block;
+}
+
+/* ── Description hint ────────────────────────────────────────── */
+.cp-description {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1.4;
+    min-height: 18px;
+}
+
+/* ── Check cards (configured checks list) ────────────────────── */
+.cp-check-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    padding: 9px 11px;
+    margin-bottom: 7px;
+    transition: border-color 0.15s;
+}
+.cp-check-card:hover { border-color: #94a3b8; }
+
+.cp-check-card .cp-check-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: #1e293b;
+}
+
+.cp-check-card .cp-check-col {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 1px;
+}
+
+.cp-threshold-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+}
+
+/* ── Result cards ────────────────────────────────────────────── */
+.cp-result-card {
+    border-radius: 7px;
+    padding: 9px 11px;
+    margin-bottom: 7px;
+    border-left: 4px solid transparent;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.cp-result-card.severity-passed  { border-left-color: #10b981; }
+.cp-result-card.severity-warning { border-left-color: #f59e0b; }
+.cp-result-card.severity-error   { border-left-color: #ef4444; }
+.cp-result-card.severity-fatal   { border-left-color: #7c3aed; }
+
+.cp-result-label { font-weight: 600; font-size: 0.82rem; color: #1e293b; }
+.cp-result-col   { font-size: 0.72rem; color: #64748b; }
+.cp-result-value { font-size: 0.78rem; margin-top: 4px; }
+
+.cp-sev-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.cp-sev-passed  { background: #d1fae5; color: #065f46; }
+.cp-sev-warning { background: #fef3c7; color: #92400e; }
+.cp-sev-error   { background: #fee2e2; color: #991b1b; }
+.cp-sev-fatal   { background: #ede9fe; color: #4c1d95; }
+
+/* ── Empty / loading states ──────────────────────────────────── */
+.cp-empty {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    padding: 20px 0;
+}
+
+/* ── Tab navigation ──────────────────────────────────────────── */
+.cp-tabs {
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    padding: 0 12px;
+    flex-shrink: 0;
+}
+
+.cp-tabs .nav-link {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 10px 12px;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.cp-tabs .nav-link.active {
+    color: #1e293b;
+    border-bottom-color: #3b82f6;
+    background: transparent;
+    font-weight: 600;
+}
+
+.cp-tabs .nav-link:hover:not(.active) { color: #1e293b; }
+
+.tab-content { flex: 1; overflow-y: auto; }
+.tab-pane    { min-height: 0; }
+
+/* ── Threshold group with relational operator ────────────────── */
+.cp-thresh-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.cp-thresh-input-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.cp-op-select {
+    width: 50px !important;
+    min-width: 50px;
+    flex-shrink: 0;
+    padding: 0.2rem 0.2rem !important;
+    font-size: 0.78rem !important;
+    text-align: center;
+}
+
+/* ── Summary inner ───────────────────────────────────────────── */
+.cp-summary-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+}
+
+/* ── When panel is open, shrink main content on large screens ── */
+@media (min-width: 992px) {
+    .checks-panel-open .app-main {
+        margin-right: 400px;
+        transition: margin-right 0.25s ease;
+    }
+}

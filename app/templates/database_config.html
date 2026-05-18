@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="validation-container">
-    <h1>Database Configuration</h1>
+    <h1 class="page-title">Database Configuration</h1>
     
     <div class="selection-panel">
         <h3>Add New Database</h3>
@@ -162,90 +162,4 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleConnectionFields();
 });
 </script>
-
-<style>
-.form-input {
-    width: 100%;
-    max-width: 400px;
-    padding: 8px 12px;
-    border: 2px solid var(--primary-color);
-    border-radius: 4px;
-    font-size: 14px;
-    margin-bottom: 10px;
-}
-
-.primary-button {
-    background-color: var(--primary-color);
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.3s;
-}
-
-.secondary-button {
-    background-color: var(--gray-light);
-    color: var(--primary-color);
-    padding: 8px 16px;
-    border: 1px solid var(--primary-color);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.3s;
-}
-
-.danger-button {
-    background-color: #dc3545;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.3s;
-}
-
-.danger-button:hover {
-    background-color: #c82333;
-}
-
-.selection-panel {
-    background: var(--gray-light);
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
-}
-
-.database-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.database-item {
-    background: var(--gray-light);
-    padding: 15px;
-    border-radius: 4px;
-    border: 1px solid var(--gray);
-}
-
-.database-info {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.database-name {
-    flex-grow: 1;
-    font-weight: 500;
-}
-
-.inline-form {
-    display: inline;
-    margin: 0;
-}
-</style>
 {% endblock %}

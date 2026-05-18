@@ -108,8 +108,8 @@ class DataValidator:
         for name, config in self._database_configs.items():
             # Only include configurations that belong to the current user if specified
             if current_user is None or config.get('creator') == current_user:
-                # Use the database name from config or fallback to display_name
-                display_name = config.get('database') if config.get('database') else config.get('display_name', name.split('_')[0])
+                # Use the user's chosen display name, fall back to database name, then key prefix
+                display_name = config.get('display_name') or config.get('database') or name.split('_')[0]
                 configs.append({
                     'name': name,
                     'display_name': display_name,
@@ -956,11 +956,13 @@ class DataValidator:
         # Set default score for accuracy as it's not currently implemented
         metrics['accuracy']['score'] = 100
 
-    def _validate_custom_query(self, query):
+    def _validate_custom_query(self, query, config=None, database=None):
         """
         Validate data from a custom query
         Args:
-            query: SQL query to execute
+            query:    SQL query to execute
+            config:   optional connection config dict (to target a specific server)
+            database: optional database name to connect to within that config
         """
         # Basic SQL syntax validation
         cleaned_query = query.strip()
@@ -989,9 +991,11 @@ class DataValidator:
                 'null_values': {'details': {}}
             }
 
-        with self.db.get_connection() as conn:
+        _ctx = (self.db._get_connection_for_config(config, database=database)
+                if config else self.db.get_connection())
+        with _ctx as conn:
             try:
-                if self.db.db_type == DatabaseType.POSTGRES:
+                if self.db.db_type == DatabaseType.POSTGRES or config:
                     results = conn.run(query)
                     columns = [desc['name'] for desc in conn.columns]
                 else:  # Snowflake
@@ -1097,35 +1101,14 @@ class DataValidator:
                 total_rows = len(df)
 
                 validation_results = {
-                    'duplicates': self._check_duplicates(
-                        df, 
-                        key_column=None,
-                        foreign_key=None
-                    ),
                     'null_values': self._check_null_values(df),
-                    'date_issues': self._check_basic_dates(df),
-                    'anomalies': self._check_outliers(df),
+                    'duplicates': self._check_duplicates(df, key_column=None, foreign_key=None),
+                    'format_issues': self._check_format_issues(df),
+                    'outliers': self._check_outliers(df),
                     'timeliness': self._check_basic_timeliness(df),
                     'row_count': total_rows,
                     'preview_limit': 100
                 }
-                
-                # Only limit the preview records while keeping full counts
-                if 'duplicates' in validation_results and 'details' in validation_results['duplicates']:
-                    for key in validation_results['duplicates']['details']:
-                        if 'records' in validation_results['duplicates']['details'][key]:
-                            full_count = len(validation_results['duplicates']['details'][key]['records'])
-                            validation_results['duplicates']['details'][key]['records'] = \
-                                validation_results['duplicates']['details'][key]['records'][:100]
-                            validation_results['duplicates']['details'][key]['total_records'] = full_count
-
-                if 'null_values' in validation_results and 'details' in validation_results['null_values']:
-                    for col in validation_results['null_values']['details']:
-                        if 'rows' in validation_results['null_values']['details'][col]:
-                            full_count = len(validation_results['null_values']['details'][col]['rows'])
-                            validation_results['null_values']['details'][col]['rows'] = \
-                                validation_results['null_values']['details'][col]['rows'][:100]
-                            validation_results['null_values']['details'][col]['total_rows'] = full_count
 
                 return self._ensure_serializable(validation_results)
             except Exception as e:
@@ -1135,8 +1118,7 @@ class DataValidator:
                     'error': f"Query validation failed: {error_msg}",
                     'row_count': 0,
                     'duplicates': {'count': 0, 'details': []},
-                    'null_values': {'details': {}},
-                    'date_issues': {}
+                    'null_values': {'details': {}}
                 }
 
     def validate_schema(self, schema: str) -> Dict[str, Any]:
