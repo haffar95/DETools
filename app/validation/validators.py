@@ -162,6 +162,33 @@ class DataValidator:
         }
         self._save_database_configs()
 
+    def update_database_config(self, key: str, current_user: str, display_name: str,
+                               db_host: str = None, db_port: str = None,
+                               db_user: str = None, db_password: str = None,
+                               db_account: str = None, db_warehouse: str = None,
+                               db_role: str = None, db_database: str = None,
+                               ssh_host: str = None, ssh_user: str = None,
+                               ssh_key_path: str = None):
+        """Update an existing database configuration in-place (only the owner may edit)."""
+        if key not in self._database_configs:
+            raise ValueError("Connection not found")
+        cfg = self._database_configs[key]
+        if cfg.get('creator') != current_user:
+            raise PermissionError("You are not authorised to edit this connection")
+        cfg['display_name'] = display_name
+        if db_host     is not None: cfg['host']      = db_host
+        if db_port     is not None: cfg['port']      = db_port
+        if db_user     is not None: cfg['user']      = db_user
+        if db_password:             cfg['password']  = db_password   # blank = keep existing
+        if db_account  is not None: cfg['account']   = db_account
+        if db_warehouse is not None: cfg['warehouse'] = db_warehouse
+        if db_role     is not None: cfg['role']      = db_role
+        if db_database is not None: cfg['database']  = db_database
+        cfg['ssh_host']     = ssh_host or None
+        cfg['ssh_user']     = ssh_user or None
+        cfg['ssh_key_path'] = ssh_key_path or None
+        self._save_database_configs()
+
     def delete_database_config(self, db_name: str, current_user: str):
         """Delete a database configuration if it belongs to the current user"""
         if db_name in self._database_configs:

@@ -22,6 +22,30 @@ db = DatabaseConnector()
 validator = DataValidator()
 
 
+def _friendly_conn_error(raw: str) -> str:
+    """Convert a raw connection exception string into a short, user-friendly message."""
+    r = raw.lower()
+    if 'password authentication failed' in r or '28p01' in r or 'authentication failed' in r:
+        return 'Incorrect username or password.'
+    if 'database' in r and ('does not exist' in r or 'not found' in r):
+        return 'Database not found. Check the database name.'
+    if 'role' in r and 'does not exist' in r:
+        return 'User/role not found. Check the username.'
+    if 'connection refused' in r or 'cannot connect' in r or 'could not connect' in r:
+        return 'Connection refused. Check the host and port.'
+    if 'timeout' in r or 'timed out' in r:
+        return 'Connection timed out. Check the host and port.'
+    if 'name or service not known' in r or 'nodename nor servname' in r or 'gaierror' in r:
+        return 'Hostname not found. Check the host address.'
+    if 'ssl' in r:
+        return 'SSL error. The server may not support SSL or the certificate is invalid.'
+    if 'account' in r and 'snowflake' in r:
+        return 'Invalid Snowflake account identifier.'
+    # Fallback: strip internal dict repr, show first sentence only
+    clean = raw.split('{')[0].strip().rstrip(':').strip()
+    return clean if clean else 'Connection failed. Check your credentials and network settings.'
+
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -260,6 +284,34 @@ def database_config():
     databases = validator.get_database_configs(current_user=session['user_id'])
     return render_template('database_config.html', databases=databases)
 
+@app.route('/api/test-connection', methods=['POST'])
+@login_required
+def test_connection():
+    try:
+        data     = request.get_json(silent=True) or {}
+        db_type  = data.get('db_type', 'postgres')
+        host     = data.get('db_host', '')
+        port     = data.get('db_port', '5432')
+        user     = data.get('db_user', '')
+        password = data.get('db_password', '')
+        database = data.get('db_database', '')
+        account  = data.get('db_account', '')
+        warehouse= data.get('db_warehouse', '')
+        role     = data.get('db_role', '')
+        ssh_host = data.get('ssh_host', '') or None
+        ssh_user = data.get('ssh_user', '') or None
+
+        test_db = DatabaseConnector()
+        test_db.update_connection(
+            host=host, port=port, user=user, password=password,
+            db_type=db_type, database=database,
+            account=account, warehouse=warehouse, role=role,
+            ssh_host=ssh_host, ssh_user=ssh_user,
+        )
+        return jsonify({'ok': True, 'message': 'Connection successful'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': _friendly_conn_error(str(e))})
+
 @app.route('/add_database_config', methods=['POST'])
 @login_required
 def add_database_config():
@@ -296,6 +348,36 @@ def add_database_config():
     except Exception as e:
         flash(f'Error adding database configuration: {str(e)}', 'error')
     
+    return redirect(url_for('database_config'))
+
+@app.route('/edit_database_config', methods=['POST'])
+@login_required
+def edit_database_config():
+    try:
+        key          = request.form['db_key']
+        display_name = request.form['db_name']
+        db_password  = request.form.get('db_password', '').strip()  # blank = keep existing
+        validator.update_database_config(
+            key=key,
+            current_user=session['user_id'],
+            display_name=display_name,
+            db_host=request.form.get('db_host') or None,
+            db_port=request.form.get('db_port') or None,
+            db_user=request.form.get('db_user') or None,
+            db_password=db_password or None,
+            db_account=request.form.get('db_account') or None,
+            db_warehouse=request.form.get('db_warehouse') or None,
+            db_role=request.form.get('db_role') or None,
+            db_database=request.form.get('db_database') or None,
+            ssh_host=request.form.get('ssh_host') or None,
+            ssh_user=request.form.get('ssh_user') or None,
+            ssh_key_path=request.form.get('ssh_key_path') or None,
+        )
+        flash('Connection updated successfully!', 'success')
+    except PermissionError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        flash(f'Error updating connection: {str(e)}', 'danger')
     return redirect(url_for('database_config'))
 
 @app.route('/delete_database', methods=['POST'])
