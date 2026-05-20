@@ -1,0 +1,1250 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/overview.css') }}">
+<!-- Cytoscape.js – mature graph library  https://js.cytoscape.org/ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js"></script>
+<!-- Dagre – directed-graph layout engine  https://github.com/dagrejs/dagre -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<!-- cytoscape-dagre – Dagre adapter for Cytoscape -->
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+.ln-wrap        { display:flex; gap:12px; height:calc(100vh - 108px); min-height:540px; }
+.ln-sidebar     { width:255px; flex-shrink:0; display:flex; flex-direction:column;
+                  gap:10px; overflow-y:auto; }
+.ln-main        { flex:1; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.ln-graph-card  { flex:1; position:relative; border-radius:12px; overflow:hidden;
+                  border:1px solid var(--ov-border,#e5e7eb); background:#fff; }
+.ln-canvas      { width:100%; height:100%; }
+.ln-panel       { background:#fff; border:1px solid var(--ov-border,#e5e7eb);
+                  border-radius:12px; padding:13px 15px; flex-shrink:0; }
+.ln-panel-title { font-size:0.68rem; font-weight:700; text-transform:uppercase;
+                  letter-spacing:.6px; color:#94a3b8; margin-bottom:9px; }
+.scope-card     { background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px;
+                  padding:7px 10px; margin-bottom:7px; }
+.scope-card-top { display:flex; align-items:center; justify-content:space-between;
+                  font-size:0.81rem; font-weight:600; color:#1e3a5f; }
+.scope-schemas  { display:flex; flex-wrap:wrap; gap:3px; margin-top:5px; }
+.scope-pill     { font-size:0.68rem; background:#e0e7ff; color:#3730a3;
+                  padding:1px 7px; border-radius:99px; }
+.ln-schema-list { display:flex; flex-direction:column; gap:3px;
+                  max-height:160px; overflow-y:auto; margin-top:5px; }
+.ln-sch-item    { display:flex; align-items:center; gap:6px; font-size:0.8rem;
+                  padding:3px 4px; border-radius:5px; cursor:pointer; }
+.ln-sch-item:hover { background:#f1f5f9; }
+.ln-sch-dot     { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ln-toggle      { display:flex; align-items:center; gap:7px; font-size:0.8rem;
+                  cursor:pointer; padding:2px 0; }
+.ln-toggle input { cursor:pointer; }
+/* Filters top-bar */
+.ln-topbar      { display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+                  background:#fff; border:1px solid var(--ov-border,#e5e7eb);
+                  border-radius:10px; padding:6px 14px; flex-shrink:0;
+                  font-size:0.76rem; }
+.ln-topbar-label { font-size:0.65rem; font-weight:700; text-transform:uppercase;
+                   letter-spacing:.5px; color:#94a3b8; white-space:nowrap; }
+.ln-topbar-sep  { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; margin:0 6px; }
+.ln-loading     { position:absolute; inset:0; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; gap:12px;
+                  background:rgba(255,255,255,.93); z-index:10; border-radius:12px; }
+.ln-loading.hidden { display:none; }
+.ln-placeholder { color:#94a3b8; font-size:0.87rem; text-align:center;
+                  padding:0 28px; line-height:1.7; }
+.ln-detail-card { background:#fff; border:1px solid var(--ov-border,#e5e7eb);
+                  border-radius:12px; padding:13px 17px; display:none; flex-shrink:0; }
+.ln-detail-card.visible { display:block; }
+.ln-detail-title { font-weight:700; font-size:0.94rem; margin-bottom:5px; }
+.ln-detail-meta  { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:9px; }
+.ln-detail-badge { font-size:0.7rem; padding:2px 9px; border-radius:99px; font-weight:600; }
+.ln-col-list    { display:flex; flex-wrap:wrap; gap:4px;
+                  max-height:75px; overflow-y:auto; }
+.ln-col-pill    { font-size:0.69rem; background:#f1f5f9; border-radius:5px;
+                  padding:2px 7px; color:#374151; }
+#buildGraphBtn  { padding:9px 0; font-size:0.87rem; border-radius:10px; }
+#buildGraphBtn:disabled { opacity:.4; }
+/* Lineage page: neutralise ov-page constraints so the graph fills all available width */
+.ov-page   { padding: 6px 0 0; max-width: none; }
+.ov-header { margin-bottom: 10px; }
+.ln-layout-bar  { display:flex; align-items:center; gap:6px; }
+.ln-layout-btn  { font-size:0.75rem; padding:3px 10px; border-radius:6px;
+                  border:1px solid #d1d5db; background:#fff; cursor:pointer;
+                  color:#374151; transition:background .15s; }
+.ln-layout-btn:hover, .ln-layout-btn.active
+                { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+/* Trace panel */
+.ln-trace-inp   { width:100%; font-size:0.8rem; padding:5px 9px; border-radius:8px;
+                  border:1px solid #d1d5db; outline:none; }
+.ln-trace-inp:focus { border-color:#7c3aed; }
+.ln-trace-status { font-size:0.72rem; color:#7c3aed; font-weight:600; margin-top:4px;
+                   min-height:14px; }
+/* Reads-from / Writes-to lists in detail panel */
+.ln-rel-grid    { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+.ln-rel-col     { background:#f8fafc; border-radius:9px; padding:8px 10px; min-height:40px;
+                  border:1px solid #e2e8f0; }
+.ln-rel-title   { font-size:0.64rem; font-weight:700; text-transform:uppercase;
+                  letter-spacing:.5px; margin-bottom:5px; }
+.ln-rel-item    { display:flex; align-items:flex-start; gap:5px; font-size:0.76rem;
+                  padding:2px 4px; border-radius:5px; cursor:pointer; color:#374151;
+                  line-height:1.4; word-break:break-word; }
+.ln-rel-item:hover { background:#e0e7ff; color:#3730a3; }
+.ln-rel-empty   { font-size:0.73rem; color:#94a3b8; }
+.ln-rel-dot     { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ov-page">
+
+  <div class="ov-header">
+    <div>
+      <h4 class="mb-0 fw-semibold">
+        <i class="bi bi-diagram-3 me-2 text-primary"></i>Data Lineage
+      </h4>
+      <div class="text-muted" style="font-size:0.84rem">
+        Pick schemas from the active connection — the graph maps
+        <strong>Foreign Key</strong> relationships and
+        <strong>View → Table</strong> dependencies
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" id="lnFitBtn" disabled>
+        <i class="bi bi-fullscreen me-1"></i>Fit
+      </button>
+    </div>
+  </div>
+
+  <!-- Focus mode banner (shown when a focus object is active) -->
+  <div id="focusBanner" style="display:none;margin-bottom:8px;padding:8px 14px;
+       border-radius:10px;background:#fefce8;border:1px solid #fde68a;
+       font-size:0.81rem;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+    <i class="bi bi-bullseye text-warning"></i>
+    <span>Focused on <strong id="focusBannerName"></strong></span>
+    <span class="ms-2 d-flex align-items-center gap-6px" style="gap:10px">
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <span style="display:inline-block;width:11px;height:11px;border-radius:2px;
+              border:4px solid #dc2626;background:#eff6ff"></span>
+        <span class="text-muted">Focus node (red border)</span>
+      </span>
+    </span>
+    <span class="text-muted ms-auto" style="font-size:0.72rem">
+      <i class="bi bi-arrow-left me-1"></i>Left = origins &nbsp;·&nbsp; Right = dependents<i class="bi bi-arrow-right ms-1"></i>
+    </span>
+  </div>
+
+  <div class="ln-wrap">
+
+    <!-- ═══ SIDEBAR ═══════════════════════════════════════════════ -->
+    <div class="ln-sidebar">
+
+      <!-- Scope builder -->
+      <div class="ln-panel">
+        <div class="ln-panel-title">Add Scope</div>
+
+        <div id="dbRow" style="display:none">
+          <label class="ov-label">Database</label>
+          <select id="scopeDb" class="form-select form-select-sm mb-2"
+                  onchange="onDbChange()">
+            <option value="">Select database…</option>
+          </select>
+        </div>
+
+        <div id="schemaRow" style="display:none">
+          <div class="d-flex align-items-center justify-content-between">
+            <label class="ov-label mb-0">Schemas</label>
+            <button class="btn btn-link btn-sm p-0" style="font-size:0.69rem"
+                    onclick="toggleAllSchemas()">All / None</button>
+          </div>
+          <div class="ln-schema-list" id="schemaList"></div>
+          <div id="schemaSpinner"
+               style="font-size:0.77rem;color:#94a3b8;display:none;margin-top:4px">
+            <span class="spinner-border spinner-border-sm me-1"></span>
+            Loading schemas…
+          </div>
+        </div>
+
+        <!-- Focus Object picker (optional, appears after schemas load) -->
+        <div id="focusRow" style="display:none;margin-top:10px">
+          <label class="ov-label" style="display:flex;align-items:center;gap:6px">
+            Focus Object
+            <span class="text-muted" style="font-weight:400;font-size:0.75rem">(optional)</span>
+            <span id="focusSpinner" class="spinner-border spinner-border-sm ms-auto"
+                  style="display:none;width:0.7rem;height:0.7rem"></span>
+          </label>
+          <select class="form-select form-select-sm" id="focusInput">
+            <option value="">All objects in selected schema(s)</option>
+          </select>
+          <div style="font-size:0.69rem;color:#94a3b8;margin-top:3px;line-height:1.4">
+            Graph will only show this object and everything connected to it.
+          </div>
+        </div>
+
+        <button class="btn btn-sm btn-outline-primary w-100 mt-3"
+                id="addScopeBtn" disabled onclick="addScope()">
+          <i class="bi bi-plus-lg me-1"></i>Add to Graph
+        </button>
+      </div>
+
+      <!-- Active scopes list -->
+      <div class="ln-panel" id="activeScopesPanel" style="display:none">
+        <div class="ln-panel-title">Selected Scopes</div>
+        <div id="activeScopesList"></div>
+      </div>
+
+      <!-- Build button -->
+<!-- Routine option (before build) -->
+        <div class="ln-panel" style="padding:10px 14px">
+          <div class="ln-panel-title" style="margin-bottom:6px">Graph Options</div>
+          <label class="ln-toggle">
+            <input type="checkbox" id="includeRoutines">
+            <i class="bi bi-gear" style="color:#7c3aed;font-size:0.85rem"></i>
+            Include Functions &amp; Procedures
+          </label>
+          <div style="font-size:0.69rem;color:#94a3b8;margin-top:4px;line-height:1.5">
+            Parses SQL bodies via sqlglot to extract table reads &amp; writes.
+          </div>
+        </div>
+
+        <button class="btn btn-primary w-100" id="buildGraphBtn"
+              disabled onclick="buildGraph()">
+        <i class="bi bi-diagram-3 me-1"></i>Build Graph
+      </button>
+
+        <!-- Trace Object (visible after build) -->
+        <div class="ln-panel" id="tracePanel" style="display:none">
+          <div class="ln-panel-title">Trace Object</div>
+          <input list="traceList" class="ln-trace-inp" id="traceInput"
+                 placeholder="Table, view, or procedure…"
+                 onkeydown="if(event.key==='Enter') doTrace()">
+          <datalist id="traceList"></datalist>
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-sm btn-outline-primary flex-fill" onclick="doTrace()">
+              <i class="bi bi-search me-1"></i>Trace
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="traceResetBtn"
+                    style="display:none" onclick="resetTrace()">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div class="ln-trace-status" id="traceStatus"></div>
+        </div>
+
+      <!-- Filters (visible after build) -->
+      <!-- (moved to top-bar above canvas) -->
+
+      <!-- Legend card -->
+      <div class="ln-panel"
+           style="font-size:0.77rem;color:#475569;line-height:1.65">
+        <div class="ln-panel-title">Graph Legend</div>
+        <div>
+          <span style="display:inline-block;width:15px;height:2px;background:#16a34a;vertical-align:middle;border-radius:2px"></span>
+          &nbsp;<b>Green solid</b> — FK reference (read)
+        </div>
+        <div class="mt-1">
+          <span style="display:inline-block;width:15px;border-top:2px dashed #16a34a;vertical-align:middle"></span>
+          &nbsp;<b>Green dashed</b> — View / routine reads
+        </div>
+        <div class="mt-1">
+          <span style="display:inline-block;width:15px;height:2px;background:#dc2626;vertical-align:middle;border-radius:2px"></span>
+          &nbsp;<b>Red solid</b> — Routine writes
+        </div>
+        <div class="mt-2 d-flex flex-wrap gap-2" style="font-size:0.72rem">
+          <span><span style="display:inline-block;width:9px;height:9px;background:#eff6ff;border:2px solid #3b82f6;vertical-align:middle"></span> Table</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#fffbeb;border:2px solid #f59e0b;vertical-align:middle"></span> View</span>
+          <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#ecfdf5;border:2px solid #10b981;vertical-align:middle"></span> Mat.View</span>
+          <span><span style="display:inline-block;width:9px;height:9px;background:#f3e8ff;border:2px solid #7c3aed;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);vertical-align:middle"></span> Fn/Proc</span>
+          <span><span style="display:inline-block;width:9px;height:9px;background:#f9fafb;border:2px dashed #9ca3af;clip-path:polygon(8% 0%,92% 0%,100% 8%,100% 92%,92% 100%,8% 100%,0% 92%,0% 8%);vertical-align:middle"></span> External</span>
+        </div>
+        <div class="mt-2 text-muted" style="font-size:0.7rem">
+          Click a node to inspect it.<br>
+          Click the canvas background to deselect.
+        </div>
+      </div>
+
+    </div><!-- /sidebar -->
+
+    <!-- ═══ MAIN ══════════════════════════════════════════════════ -->
+    <div class="ln-main">
+
+
+
+      <!-- Filters top-bar (visible after graph is built) -->
+      <div id="filtersPanel" class="ln-topbar" style="display:none">
+
+        <!-- Edge types -->
+        <span class="ln-topbar-label">Edges</span>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showFk" checked onchange="applyFilters()">
+          <span style="display:inline-block;width:14px;height:2px;background:#16a34a;border-radius:2px"></span>
+          FK
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showViews" checked onchange="applyFilters()">
+          <span style="display:inline-block;width:14px;border-top:2px dashed #16a34a"></span>
+          Views
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showRtnReads" checked onchange="applyFilters()">
+          <span style="display:inline-block;width:14px;border-top:2px dashed #16a34a"></span>
+          Rtn Reads
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showRtnWrites" checked onchange="applyFilters()">
+          <span style="display:inline-block;width:14px;height:2px;background:#dc2626;border-radius:2px"></span>
+          Rtn Writes
+        </label>
+
+        <div class="ln-topbar-sep"></div>
+
+        <!-- Node types -->
+        <span class="ln-topbar-label">Nodes</span>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showTables" checked onchange="applyFilters()">
+          <span style="width:9px;height:9px;background:#eff6ff;border:2px solid #3b82f6;display:inline-block"></span>
+          Tables
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showViewNodes" checked onchange="applyFilters()">
+          <span style="width:9px;height:9px;border-radius:50%;background:#fffbeb;border:2px solid #f59e0b;display:inline-block"></span>
+          Views
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showMatviews" checked onchange="applyFilters()">
+          <span style="width:9px;height:9px;border-radius:50%;background:#ecfdf5;border:2px solid #10b981;display:inline-block"></span>
+          Mat.Views
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showExternal" checked onchange="applyFilters()">
+          <span style="width:9px;height:9px;background:#f9fafb;border:2px dashed #9ca3af;display:inline-block"></span>
+          External
+        </label>
+        <label class="ln-toggle">
+          <input type="checkbox" id="showRoutines" checked onchange="applyFilters()">
+          <span style="width:9px;height:9px;background:#f3e8ff;border:2px solid #7c3aed;display:inline-block;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%)"></span>
+          Fn/Proc
+        </label>
+
+        <!-- Schema colour chips (populated after build) -->
+        <div class="ln-topbar-sep" id="legendSep" style="display:none"></div>
+        <div id="groupLegend" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
+
+        <!-- Relationship depth (focus mode only) -->
+        <div id="depthSection" style="display:none;align-items:center;gap:8px">
+          <div class="ln-topbar-sep"></div>
+          <span class="ln-topbar-label">Depth</span>
+          <span style="font-size:0.72rem;color:#64748b;white-space:nowrap">
+            Within <strong id="depthLabel">All</strong> hop(s)
+          </span>
+          <input type="range" class="form-range" id="depthSlider"
+                 min="1" max="5" value="5" step="1"
+                 style="width:90px;margin:0"
+                 oninput="onDepthChange(this)">
+          <span style="font-size:0.67rem;color:#94a3b8;white-space:nowrap" id="depthMaxLabel">All</span>
+        </div>
+
+      </div><!-- /filtersPanel topbar -->
+
+      <!-- Graph canvas -->
+      <div class="ln-graph-card">
+        <!-- Floating Exit Trace button — appears whenever trace/fade is active -->
+        <button id="traceExitBtn"
+                style="display:none;position:absolute;top:10px;right:10px;z-index:20"
+                class="btn btn-warning btn-sm shadow-sm"
+                onclick="resetTrace()">
+          <i class="bi bi-x-circle me-1"></i>Exit Trace
+        </button>
+        <div class="ln-loading" id="lnLoading">
+          <i class="bi bi-diagram-3"
+             style="font-size:2.8rem;color:#c7d2fe"></i>
+          <div class="ln-placeholder">
+            Pick a database and schemas from the left panel,<br>
+            then click <strong>Build Graph</strong>.<br><br>
+            <small style="font-size:0.75rem">
+              Renders: FK constraints &amp; View → Table dependencies
+            </small>
+          </div>
+        </div>
+        <div id="lnCanvas" class="ln-canvas"></div>
+      </div>
+
+      <!-- Node detail panel -->
+      <div class="ln-detail-card" id="lnDetail">
+        <div class="d-flex align-items-start justify-content-between">
+          <div class="ln-detail-title" id="detailTitle">—</div>
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:0.73rem"
+                    id="detailTraceBtn" onclick="traceFromDetail()">
+              <i class="bi bi-diagram-3 me-1"></i>Trace
+            </button>
+            <button class="btn btn-sm btn-link p-0 text-muted" onclick="closeDetail()">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+        <div class="ln-detail-meta" id="detailMeta"></div>
+
+        <!-- Reads-from / Writes-to grid -->
+        <div class="ln-rel-grid" id="detailRelGrid">
+          <div class="ln-rel-col">
+            <div class="ln-rel-title" style="color:#4f46e5">
+              <i class="bi bi-arrow-left-circle me-1"></i>Reads From
+            </div>
+            <div id="detailReadsFrom"><span class="ln-rel-empty">—</span></div>
+          </div>
+          <div class="ln-rel-col">
+            <div class="ln-rel-title" style="color:#7c3aed">
+              <i class="bi bi-arrow-right-circle me-1"></i>Writes To / Used By
+            </div>
+            <div id="detailWritesTo"><span class="ln-rel-empty">—</span></div>
+          </div>
+        </div>
+
+        <div class="ln-panel-title">Columns</div>
+        <div class="ln-col-list" id="detailCols">
+          <span class="text-muted" style="font-size:0.79rem">Loading…</span>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Data Lineage – Cytoscape.js + cytoscape-dagre
+
+   Cytoscape.js    https://js.cytoscape.org/
+   cytoscape-dagre https://github.com/cytoscape/cytoscape.js-dagre
+   Dagre layout    https://github.com/dagrejs/dagre
+
+   Left → Right rank direction: data SOURCES on the left,
+   CONSUMERS (views, FK children) on the right – ideal for lineage.
+============================================================ */
+
+/* Register the Dagre layout plugin with Cytoscape */
+cytoscape.use(cytoscapeDagre);
+
+/* ── Colour palette (one per schema group) ─────────────────── */
+const PALETTE = [
+  '#4f46e5','#0ea5e9','#10b981','#f59e0b','#ef4444',
+  '#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316',
+  '#14b8a6','#a855f7','#fb923c','#6366f1','#22d3ee',
+];
+const _gc = {};
+function groupColor(g) {
+  if (!_gc[g]) _gc[g] = PALETTE[Object.keys(_gc).length % PALETTE.length];
+  return _gc[g];
+}
+
+/* ── State ─────────────────────────────────────────────────── */
+let _cy         = null;   // Cytoscape instance
+let _allNodes   = [];
+let _allEdges   = [];
+let _nodeMap    = {};     // id → node data (fast lookup)
+let _scopes     = [];
+let _activeConn = null;   // { key, label }
+let _curLayout  = 'dagre';
+let _inTrace    = false;  // trace mode active
+let _traceId    = null;   // currently traced node id
+let _maxDepth   = Infinity; // relationship depth filter (Infinity = all)
+let _focusObjs  = [];     // objects available in focus picker
+let _focusTid   = null;   // debounce timer for focus load
+
+/* ── Active connection ─────────────────────────────────────── */
+async function initFromActiveConn() {
+  try {
+    const resp = await fetch('/api/current-database');
+    const data = await resp.json();
+    const sel  = data.selected_db;
+    if (!sel || !sel.name) return;
+    _activeConn = { key: sel.name, label: sel.name };
+
+    /* Load database list */
+    const dbResp = await fetch('/api/tree/databases?conn=' +
+                               encodeURIComponent(sel.name));
+    const dbData = await dbResp.json();
+    const dbs    = dbData.databases || [];
+    if (dbs.length === 0) {
+      document.getElementById('dbRow').style.display = 'none';
+      loadSchemas(sel.name, null);
+    } else {
+      document.getElementById('scopeDb').innerHTML =
+        '<option value="">Select database…</option>' +
+        dbs.map(d => '<option value="' + d + '">' + d + '</option>').join('');
+      document.getElementById('dbRow').style.display = '';
+    }
+  } catch (e) { /* connection load failed */ }
+}
+
+async function onDbChange() {
+  const db = document.getElementById('scopeDb').value;
+  document.getElementById('schemaRow').style.display = 'none';
+  document.getElementById('addScopeBtn').disabled = true;
+  if (!db || !_activeConn) return;
+  loadSchemas(_activeConn.key, db);
+}
+
+async function loadSchemas(conn, db) {
+  document.getElementById('schemaRow').style.display = '';
+  document.getElementById('schemaList').innerHTML = '';
+  document.getElementById('schemaSpinner').style.display = '';
+  document.getElementById('addScopeBtn').disabled = true;
+
+  const dbParam = db ? '&db=' + encodeURIComponent(db) : '';
+  const resp    = await fetch('/api/tree/schemas?conn=' +
+                              encodeURIComponent(conn) + dbParam);
+  const data    = await resp.json();
+  const schemas = data.schemas || [];
+  document.getElementById('schemaSpinner').style.display = 'none';
+
+  if (!schemas.length) {
+    document.getElementById('schemaList').innerHTML =
+      '<span style="font-size:0.77rem;color:#94a3b8">No schemas found.</span>';
+    return;
+  }
+  document.getElementById('schemaList').innerHTML = schemas.map(s => {
+    const color = groupColor(conn + '__' + (db || '_') + '__' + s);
+    return '<label class="ln-sch-item">' +
+      '<input type="checkbox" class="sch-cb" value="' + s + '" checked' +
+      ' onchange="scheduleFocusLoad()">' +
+      '<span class="ln-sch-dot" style="background:' + color + '"></span>' +
+      '<span>' + s + '</span></label>';
+  }).join('');
+  document.getElementById('addScopeBtn').disabled = false;
+  scheduleFocusLoad();
+}
+
+function toggleAllSchemas() {
+  const cbs = document.querySelectorAll('.sch-cb');
+  const any = [...cbs].some(cb => cb.checked);
+  cbs.forEach(cb => cb.checked = !any);
+  scheduleFocusLoad();
+}
+
+/* ── Focus Object loader ─────────────────────────────────────── */
+function scheduleFocusLoad() {
+  clearTimeout(_focusTid);
+  _focusTid = setTimeout(loadFocusObjects, 350);
+}
+
+async function loadFocusObjects() {
+  const checkedSchemas = [...document.querySelectorAll('.sch-cb:checked')].map(cb => cb.value);
+  const focusRow = document.getElementById('focusRow');
+  if (!checkedSchemas.length || !_activeConn) {
+    focusRow.style.display = 'none';
+    _focusObjs = [];
+    return;
+  }
+
+  // Show spinner, clear old list
+  focusRow.style.display = '';
+  document.getElementById('focusSpinner').style.display = '';
+  document.getElementById('focusInput').innerHTML = '<option value="">All objects in selected schema(s)</option>';
+
+  const dbVal  = document.getElementById('dbRow').style.display !== 'none'
+                  ? (document.getElementById('scopeDb').value || '') : '';
+  const base   = '/api/lineage/objects?conn=' + encodeURIComponent(_activeConn.key) +
+                 (dbVal ? '&db=' + encodeURIComponent(dbVal) : '');
+  const params = checkedSchemas.map(s => '&schema=' + encodeURIComponent(s)).join('');
+
+  try {
+    const r    = await fetch(base + params);
+    const data = await r.json();
+    _focusObjs = data.objects || [];
+    document.getElementById('focusInput').innerHTML =
+      '<option value="">All objects in selected schema(s)</option>' +
+      _focusObjs.map(o =>
+        '<option value="' + o.schema + '.' + o.name + '">' +
+        o.schema + '.' + o.name + ' (' + o.kind + ')</option>'
+      ).join('');
+  } catch { _focusObjs = []; }
+  document.getElementById('focusSpinner').style.display = 'none';
+}
+
+function addScope() {
+  if (!_activeConn) return;
+  const dbEl = document.getElementById('scopeDb');
+  const db   = document.getElementById('dbRow').style.display !== 'none'
+               ? (dbEl.value || null) : null;
+  const schs = [...document.querySelectorAll('.sch-cb:checked')].map(cb => cb.value);
+
+  // Resolve focus object (if any)
+  const focusVal = (document.getElementById('focusInput').value || '').trim();
+  let focus = null;
+  if (focusVal) {
+    const matched = _focusObjs.find(o => o.schema + '.' + o.name === focusVal);
+    if (matched) focus = matched;  // {schema, name, kind}
+  }
+
+  _scopes.push({
+    conn:    _activeConn.key,
+    db,
+    schemas: schs,
+    focus,
+    label:   _activeConn.label + (db ? ' / ' + db : ''),
+  });
+
+  // When a focus object is set, routines are essential for full lineage —
+  // auto-enable them so the user doesn't need to remember to tick the box.
+  if (focus) {
+    document.getElementById('includeRoutines').checked = true;
+  }
+
+  renderScopeList();
+  document.getElementById('schemaRow').style.display = 'none';
+  document.getElementById('focusRow').style.display  = 'none';
+  document.getElementById('addScopeBtn').disabled = true;
+  document.getElementById('focusInput').value = '';
+}
+
+function removeScope(i) { _scopes.splice(i, 1); renderScopeList(); }
+
+function renderScopeList() {
+  const panel = document.getElementById('activeScopesPanel');
+  const list  = document.getElementById('activeScopesList');
+  const btn   = document.getElementById('buildGraphBtn');
+  if (!_scopes.length) { panel.style.display = 'none'; btn.disabled = true; return; }
+  panel.style.display = ''; btn.disabled = false;
+  list.innerHTML = _scopes.map((s, i) => {
+    const kindIcon = {
+      table: 'bi-table', view: 'bi-eye', matview: 'bi-layers',
+      function: 'bi-gear', procedure: 'bi-gear-wide'
+    };
+    const focusChip = s.focus
+      ? '<div style="margin-top:4px;padding:2px 7px;background:#f3e8ff;color:#6d28d9;' +
+        'border-radius:12px;font-size:0.69rem;display:inline-flex;align-items:center;gap:5px">' +
+        '<i class="bi ' + (kindIcon[s.focus.kind] || 'bi-pin') + '"></i>' +
+        s.focus.schema + '.' + s.focus.name + '</div>'
+      : '';
+    return '<div class="scope-card">' +
+      '  <div class="scope-card-top">' +
+      '    <span><i class="bi bi-plug me-1 text-primary"></i>' + s.label + '</span>' +
+      '    <button class="btn btn-link btn-sm p-0 text-danger"' +
+      '            onclick="removeScope(' + i + ')">' +
+      '      <i class="bi bi-x-lg"></i></button>' +
+      '  </div>' +
+      '  <div class="scope-schemas">' +
+      (s.schemas.length === 0
+        ? '<span class="scope-pill" style="background:#f0fdf4;color:#166534">All schemas</span>'
+        : s.schemas.map(sc =>
+            '<span class="scope-pill">' + sc + '</span>').join('')) +
+      '  </div>' +
+      focusChip +
+      '</div>';
+  }).join('');
+}
+
+/* ── Build graph ────────────────────────────────────────────── */
+async function buildGraph() {
+  showOverlay('building');
+  document.getElementById('filtersPanel').style.display = 'none';
+  closeDetail();
+
+  try {
+    const resp = await fetch('/api/lineage/graph', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        selections:       _scopes,
+        include_routines: document.getElementById('includeRoutines').checked,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      showOverlay('error', data.error || 'Server error'); return;
+    }
+    _allNodes = data.nodes || [];
+    _allEdges = data.edges || [];
+    _nodeMap  = Object.fromEntries(_allNodes.map(n => [n.id, n]));
+
+    if (!_allNodes.length) {
+      showOverlay('error', 'No objects found in the selected scopes.'); return;
+    }
+    if (data.errors?.length) console.warn('Lineage warnings:', data.errors);
+
+    renderGraph();
+
+    // Focus banner
+    const focusScope = _scopes.find(s => s.focus);
+    const banner = document.getElementById('focusBanner');
+    if (focusScope) {
+      document.getElementById('focusBannerName').textContent =
+        focusScope.focus.schema + '.' + focusScope.focus.name;
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+
+    // After the 400ms layout animation: set viewport once.
+    // fit:false in layoutConfig ensures nothing overrides this.
+    // Use class selector 'node.focus' — set in renderGraph() classes, always reliable.
+    setTimeout(() => {
+      if (!_cy) return;
+      const focusEle = _cy.$('node.focus');
+      if (focusEle.length) {
+        _cy.fit(focusEle, 100);
+      } else {
+        _cy.fit(undefined, 70);
+      }
+    }, 450);
+
+    document.getElementById('filtersPanel').style.display = '';
+    document.getElementById('lnFitBtn').disabled      = false;
+    renderGroupLegend();
+    populateTraceSearch();
+
+    // Depth filter: compute max focusDepth in this graph and set up slider
+    const maxFD = _allNodes.reduce((m, n) =>
+      n.focusDepth != null ? Math.max(m, Math.abs(n.focusDepth)) : m, 0);
+    const depthSec = document.getElementById('depthSection');
+    if (_allNodes.some(n => n.focusRole === 'focus') && maxFD > 0) {
+      const sl = document.getElementById('depthSlider');
+      sl.max   = maxFD;
+      sl.value = maxFD;
+      document.getElementById('depthLabel').textContent    = 'All';
+      document.getElementById('depthMaxLabel').textContent = 'All (' + maxFD + ')';
+      depthSec.style.display = 'flex';
+      _maxDepth = Infinity;
+    } else {
+      depthSec.style.display = 'none';
+      _maxDepth = Infinity;
+    }
+
+    document.getElementById('tracePanel').style.display = '';
+  } catch (err) {
+    showOverlay('error', 'Network error: ' + err.message);
+  }
+}
+
+/* ── Cytoscape graph ────────────────────────────────────────── */
+function renderGraph() {
+  const elements = [
+    ..._allNodes.map(n => ({
+      group: 'nodes',
+      data: {
+        id:          n.id,
+        label:       n.label,
+        schema:      n.schema,
+        kind:        n.kind,
+        rows:        n.rows,
+        size:        n.size,
+        scope:       n.scope,
+        group:       n.group,
+        external:    n.external,
+        conn_key:    n.conn_key,
+        database:    n.database,
+        focusRole:   n.focusRole  || null,
+        focusDepth:  n.focusDepth || null,
+        borderColor: n.external ? '#9ca3af' : groupColor(n.group),
+      },
+      classes: [n.kind, n.external ? 'external' : '', n.focusRole || ''].join(' ').trim(),
+    })),
+    ..._allEdges.map((e, i) => ({
+      group: 'edges',
+      data: {
+        id:         'e' + i,
+        source:     e.from,
+        target:     e.to,
+        edgeType:   e.type,
+        label:      e.label || '',
+        constraint: e.constraint || '',
+      },
+      classes: e.type,
+    })),
+  ];
+
+  if (_cy) {
+    _cy.destroy();
+    document.getElementById('lnCanvas').querySelectorAll('.rank-band').forEach(el => el.remove());
+  }
+  _cy = cytoscape({
+    container: document.getElementById('lnCanvas'),
+    elements,
+    style:     buildStyle(),
+    layout:    layoutConfig(_curLayout),
+  });
+  _cy.ready(() => {
+    document.getElementById('lnLoading').classList.add('hidden');
+    updateNodeCount();
+  });
+  _cy.on('layoutstop', drawRankBands);
+  _cy.on('pan zoom resize', drawRankBands);
+  _cy.on('tap', 'node', evt => showDetail(evt.target.data()));
+  // Hover: highlight node + its immediate edges, dim everything else
+  _cy.on('mouseover', 'node', evt => {
+    if (_inTrace) return;
+    const node = evt.target;
+    const hood = node.closedNeighborhood();
+    _cy.elements().not(hood).addClass('hover-dim').removeClass('hover-hi');
+    hood.addClass('hover-hi').removeClass('hover-dim');
+  });
+  _cy.on('mouseout', 'node', () => {
+    _cy.elements().removeClass('hover-dim hover-hi');
+  });
+  // Background tap: close detail panel and exit any active trace
+  _cy.on('tap', evt => {
+    if (evt.target === _cy) {
+      closeDetail();
+      if (_inTrace) resetTrace();
+    }
+  });
+  // Escape key: same as background tap
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeDetail(); if (_inTrace) resetTrace(); }
+  });
+}
+
+function buildStyle() {
+  return [
+    /* Base node */
+    { selector: 'node', style: {
+        label:                  'data(label)',
+        'text-valign':          'center',
+        'text-halign':          'center',
+        'font-size':            '11px',
+        'font-family':          'Inter, system-ui, sans-serif',
+        'min-zoomed-font-size': 7,
+        'border-width':         2,
+        'border-color':         'data(borderColor)',
+        'text-wrap':            'wrap',
+        'text-max-width':       '120px',
+        'text-overflow-wrap':   'anywhere',
+        'width':                'label',
+        'height':               'label',
+        padding:                '12px',
+    }},
+    { selector: 'node.table',    style: { shape: 'rectangle',       'background-color': '#eff6ff', color: '#1e3a5f' }},
+    { selector: 'node.view',     style: { shape: 'ellipse',         'background-color': '#fffbeb', color: '#78350f' }},
+    { selector: 'node.matview',  style: { shape: 'ellipse',         'background-color': '#ecfdf5', color: '#065f46' }},
+    { selector: 'node.function', style: { shape: 'diamond', padding: '20px', 'background-color': '#f3e8ff', color: '#4c1d95', 'border-color': '#7c3aed', 'text-max-width': '90px' }},
+    { selector: 'node.procedure',style: { shape: 'diamond', padding: '20px', 'background-color': '#fdf4ff', color: '#4c1d95', 'border-color': '#9333ea', 'text-max-width': '90px' }},
+    { selector: 'node.external', style: {
+        shape:              'cut-rectangle',
+        'background-color': '#f9fafb', color: '#6b7280',
+        'border-style':     'dashed',  opacity: 0.75,
+    }},
+    { selector: 'node:selected', style: {
+        'border-width':     3,
+        'background-color': '#dbeafe',
+        color:              '#1e3a5f',
+    }},
+    /* Focus-mode: only the chosen focus node is highlighted; upstream/downstream keep their natural type colour */
+    { selector: 'node.focus',      style: {
+        'border-color':     '#dc2626',
+        'border-width':     4,
+        'font-weight':      700,
+        'font-size':        '13px',
+        'z-index':          10,
+    }},
+    /* Edges – unbundled-bezier forces a visible arc on every edge, including single ones */
+    { selector: 'edge', style: {
+        'curve-style':              'unbundled-bezier',
+        'control-point-distances':  [50],
+        'control-point-weights':    [0.5],
+        'target-arrow-shape':       'triangle',
+        'arrow-scale':              0.85,
+        width:                      1.6,
+        'font-size':                '9px',
+        'text-background-color':    '#fff',
+        'text-background-opacity':  0.85,
+        'text-background-padding':  '2px',
+        opacity:                    0.85,
+    }},
+    { selector: 'edge.fk',        style: { 'line-color': '#16a34a', 'target-arrow-color': '#16a34a', 'line-style': 'solid'  }},
+    { selector: 'edge.view',       style: { 'line-color': '#16a34a', 'target-arrow-color': '#16a34a', 'line-style': 'dashed', 'line-dash-pattern': [6, 3] }},
+    { selector: 'edge.rtn_reads',  style: { 'line-color': '#16a34a', 'target-arrow-color': '#16a34a', 'line-style': 'dashed', 'line-dash-pattern': [4, 3], width: 1.3 }},
+    { selector: 'edge.rtn_writes', style: { 'line-color': '#dc2626', 'target-arrow-color': '#dc2626', 'line-style': 'solid',  width: 1.8 }},
+    { selector: 'edge:selected',   style: { width: 3.2, opacity: 1 }},
+    /* Hover highlight – dimmed neighbours */
+    { selector: 'node.hover-dim, edge.hover-dim', style: { opacity: 0.15 }},
+    { selector: 'node.hover-hi',  style: { 'border-width': 3.5, opacity: 1 }},
+    { selector: 'edge.hover-hi',  style: { width: 3, opacity: 1 }},
+    /* Faded (depth / filter) */
+    { selector: '.faded',      style: { opacity: 0.12 }},
+    { selector: 'edge.faded',  style: { opacity: 0.06 }},
+  ];
+}
+
+function layoutConfig(name) {
+  if (name === 'dagre') return {
+    name: 'dagre',
+    rankDir:   'LR',
+    ranker:    'network-simplex',   // minimises edge crossings
+    acyclicer: 'greedy',            // handle cycles cleanly
+    nodeSep:   90,                  // vertical gap between nodes in the same column
+    rankSep:   260,                 // horizontal gap between columns
+    edgeSep:   15,
+    padding:   70,
+    fit:       false,               // viewport is controlled manually via layoutstop
+    nodeDimensionsIncludeLabels: true,
+    animate: true, animationDuration: 400,
+  };
+  if (name === 'cose') return { name: 'cose', padding: 50, nodeRepulsion: 12000, nodeDimensionsIncludeLabels: true, fit: false, animate: true, animationDuration: 400 };
+  return { name, padding: 50, fit: false, animate: true, animationDuration: 400 };
+}
+
+/* ── Layout switcher ────────────────────────────────────────── */
+function setLayout(name, btn) {
+  _curLayout = name;
+  document.querySelectorAll('.ln-layout-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (_cy) {
+    _cy.layout(layoutConfig(name)).run();
+    setTimeout(() => _cy && _cy.fit(undefined, 70), 450);
+  }
+}
+
+/* ── Rank column bands (drawn behind nodes as visual columns) ── */
+function drawRankBands() {
+  const container = document.getElementById('lnCanvas');
+  container.querySelectorAll('.rank-band').forEach(el => el.remove());
+  if (!_cy || _cy.nodes(':visible').length < 2) return;
+
+  // Quantise each visible node's graph-space x into a rank bucket.
+  // Using half the rankSep as the bucket width catches stray nodes.
+  const BUCKET = 100;
+  const rankMap = {};
+  _cy.nodes(':visible').forEach(n => {
+    const key = Math.round(n.position().x / BUCKET);
+    (rankMap[key] = rankMap[key] || []).push(n);
+  });
+
+  const sortedKeys = Object.keys(rankMap).sort((a, b) => +a - +b);
+  const colors = ['rgba(79,70,229,0.045)', 'rgba(16,185,129,0.03)'];
+  const borders = ['rgba(99,102,241,0.11)', 'rgba(16,185,129,0.07)'];
+
+  sortedKeys.forEach((key, i) => {
+    const nodes = rankMap[key];
+    let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
+    nodes.forEach(n => {
+      const bb = n.renderedBoundingBox({ includeLabels: false });
+      x1 = Math.min(x1, bb.x1); x2 = Math.max(x2, bb.x2);
+      y1 = Math.min(y1, bb.y1); y2 = Math.max(y2, bb.y2);
+    });
+    const px = 16, py = 24;
+    const band = document.createElement('div');
+    band.className = 'rank-band';
+    Object.assign(band.style, {
+      position: 'absolute', pointerEvents: 'none', zIndex: '0',
+      left: (x1 - px) + 'px', top: (y1 - py) + 'px',
+      width:  (x2 - x1 + 2 * px) + 'px',
+      height: (y2 - y1 + 2 * py) + 'px',
+      background:   colors[i % colors.length],
+      border:       '1px solid ' + borders[i % borders.length],
+      borderRadius: '10px',
+    });
+    container.appendChild(band);
+  });
+}
+
+/* ── Filters ────────────────────────────────────────────────── */
+function onDepthChange(slider) {
+  const max = parseInt(slider.max);
+  const val = parseInt(slider.value);
+  _maxDepth = (val >= max) ? Infinity : val;
+  document.getElementById('depthLabel').textContent =
+    (_maxDepth === Infinity) ? 'All' : String(val);
+  applyFilters();
+  // Refresh detail panel so Reads From / Writes To reflect the new depth
+  if (_traceId) traceNode(_traceId);
+}
+
+function applyFilters() {
+  if (!_cy) return;
+  const showFk  = document.getElementById('showFk').checked;
+  const showVw  = document.getElementById('showViews').checked;
+  const showTbl = document.getElementById('showTables').checked;
+  const showVN  = document.getElementById('showViewNodes').checked;
+  const showMat = document.getElementById('showMatviews').checked;
+  const showExt = document.getElementById('showExternal').checked;
+  const q       = '';
+
+  _cy.batch(() => {
+    const showRtn = document.getElementById('showRoutines').checked;
+    const showRR  = document.getElementById('showRtnReads').checked;
+    const showRW  = document.getElementById('showRtnWrites').checked;
+    _cy.nodes().forEach(n => {
+      const d      = n.data();
+      const isRtn  = d.kind === 'function' || d.kind === 'procedure';
+      const kindOk = (d.kind === 'table'   && showTbl) ||
+                     (d.kind === 'view'    && showVN)  ||
+                     (d.kind === 'matview' && showMat) ||
+                     (d.external           && showExt) ||
+                     (isRtn                && showRtn);
+      const srchOk = !q || d.label.toLowerCase().includes(q) ||
+                           d.schema.toLowerCase().includes(q);
+      // Depth filter: focusDepth null = focus node itself (depth 0) or no focus mode
+      const fd       = d.focusDepth;
+      const depthOk  = _maxDepth === Infinity || fd == null || Math.abs(fd) <= _maxDepth;
+      n[kindOk && srchOk && depthOk ? 'removeClass' : 'addClass']('faded');
+    });
+    _cy.edges().forEach(e => {
+      const d   = e.data();
+      const ok  = (d.edgeType === 'fk'         && showFk) ||
+                  (d.edgeType === 'view'        && showVw) ||
+                  (d.edgeType === 'rtn_reads'   && showRR) ||
+                  (d.edgeType === 'rtn_writes'  && showRW);
+      const src = e.source().hasClass('faded');
+      const tgt = e.target().hasClass('faded');
+      e[ok && !src && !tgt ? 'removeClass' : 'addClass']('faded');
+    });
+  });
+  updateNodeCount(_cy.nodes().filter(n => !n.hasClass('faded')).length);
+}
+
+function updateNodeCount(_v) { /* node count display removed */ }
+
+/* ── Trace Object ──────────────────────────────────────────── */
+function populateTraceSearch() {
+  const dl = document.getElementById('traceList');
+  dl.innerHTML = _allNodes.map(n =>
+    '<option value="' + n.schema + '.' + n.label + '">' +
+    n.schema + '.' + n.label + ' (' + n.kind + ')</option>'
+  ).join('');
+}
+
+function doTrace() {
+  const q = (document.getElementById('traceInput').value || '').trim().toLowerCase();
+  if (!q || !_cy) return;
+
+  // Find matching node (exact schema.label or just label)
+  let target = _cy.nodes().filter(n => {
+    const d = n.data();
+    return (d.schema + '.' + d.label).toLowerCase() === q ||
+            d.label.toLowerCase() === q;
+  }).first();
+  if (!target.length) {
+    document.getElementById('traceStatus').textContent = '⚠️ Not found: ' + q;
+    return;
+  }
+  traceNode(target.id());
+}
+
+function traceNode(nodeId) {
+  if (!_cy || !nodeId) return;
+  _inTrace  = true;
+  _traceId  = nodeId;
+
+  // Bidirectional BFS — collect all connected nodes regardless of edge direction
+  const visited = new Set([nodeId]);
+  const queue   = [nodeId];
+  while (queue.length) {
+    const curr = queue.shift();
+    _cy.getElementById(curr).connectedEdges().forEach(e => {
+      [e.source().id(), e.target().id()].forEach(id => {
+        if (!visited.has(id)) { visited.add(id); queue.push(id); }
+      });
+    });
+  }
+
+  _cy.batch(() => {
+    _cy.nodes().forEach(n => n[visited.has(n.id()) ? 'removeClass' : 'addClass']('faded'));
+    _cy.edges().forEach(e => {
+      const ok = visited.has(e.source().id()) && visited.has(e.target().id());
+      e[ok ? 'removeClass' : 'addClass']('faded');
+    });
+  });
+
+  // Pan to the node without changing zoom so the user can see where it is.
+  const ele = _cy.getElementById(nodeId);
+  if (ele.length) _cy.fit(ele, 120);
+
+  const nd = ele.length ? ele.data() : {};
+  if (!nd.label) {
+    // Node data unavailable but BFS + grey-out already ran above
+    return;
+  }
+  document.getElementById('traceStatus').textContent =
+    '➡️ ' + nd.schema + '.' + nd.label + ' — ' + visited.size + ' connected objects';
+  document.getElementById('traceResetBtn').style.display  = '';
+  document.getElementById('traceExitBtn').style.display   = '';
+  showDetail(nd);
+}
+
+function traceFromDetail() {
+  const id = _traceId || (_cy && _cy.nodes(':selected').first().id());
+  // get the detail panel's current node id from the title
+  const title = document.getElementById('detailTitle').textContent;
+  const found = _cy.nodes().filter(n =>
+    (n.data('schema') + '.' + n.data('label')) === title
+  ).first();
+  if (found.length) traceNode(found.id());
+}
+
+function resetTrace() {
+  _inTrace = false;
+  _traceId = null;
+  _cy.elements().removeClass('faded');
+  document.getElementById('traceResetBtn').style.display  = 'none';
+  document.getElementById('traceExitBtn').style.display   = 'none';
+  document.getElementById('traceStatus').textContent      = '';
+  document.getElementById('traceInput').value             = '';
+}
+
+/* ── Schema legend ──────────────────────────────────────────── */
+function renderGroupLegend() {
+  const groups = {};
+  _allNodes.forEach(n => {
+    if (n.external) return;
+    if (!groups[n.group]) groups[n.group] = { schema: n.schema, count: 0 };
+    groups[n.group].count++;
+  });
+  const entries = Object.entries(groups);
+  const sep = document.getElementById('legendSep');
+  if (!entries.length) { sep.style.display = 'none'; document.getElementById('groupLegend').innerHTML = ''; return; }
+  sep.style.display = '';
+  document.getElementById('groupLegend').innerHTML = entries.map(([g, info]) =>
+    '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;color:#374151;' +
+    'background:#f8fafc;border:1px solid #e2e8f0;border-radius:99px;padding:1px 8px 1px 5px">' +
+    '<span style="width:7px;height:7px;border-radius:50%;background:' + groupColor(g) + ';flex-shrink:0"></span>' +
+    info.schema + '<span style="color:#94a3b8;font-size:0.65rem">' + info.count + '</span></span>'
+  ).join('');
+}
+
+/* ── Node detail panel ──────────────────────────────────────── */
+async function showDetail(d) {
+  const panel = document.getElementById('lnDetail');
+  panel.classList.add('visible');
+  document.getElementById('detailTitle').textContent = d.schema + '.' + d.label;
+
+  const kindColor = { table:'#eff6ff', view:'#fffbeb', matview:'#ecfdf5',
+                      function:'#f3e8ff', procedure:'#fdf4ff' };
+  const kindText  = { table:'Table', view:'View', matview:'Mat. View',
+                      function:'Function', procedure:'Procedure' };
+  document.getElementById('detailMeta').innerHTML =
+    '<span class="ln-detail-badge" style="background:' + (kindColor[d.kind] || '#f1f5f9') + ';color:#374151">' +
+      (kindText[d.kind] || d.kind) + '</span>' +
+    '<span class="ln-detail-badge" style="background:#f8fafc;color:#64748b">' +
+      '<i class="bi bi-stack me-1"></i>' + (d.rows || 0).toLocaleString() + ' rows</span>' +
+    (d.size ? '<span class="ln-detail-badge" style="background:#f8fafc;color:#64748b">' +
+      '<i class="bi bi-hdd me-1"></i>' + d.size + '</span>' : '') +
+    (d.external ? '<span class="ln-detail-badge" style="background:#f3f4f6;color:#6b7280">External Ref</span>' : '');
+
+  // ── Compute reads-from and writes-to ─────────────────────────
+  const readsFrom = [];
+  const writesTo  = [];
+
+  // Only include a related node if it is currently visible (within the depth slider)
+  function _withinDepth(n) {
+    if (_maxDepth === Infinity) return true;
+    const fd = n.focusDepth;
+    return fd == null || Math.abs(fd) <= _maxDepth;
+  }
+
+  _allEdges.forEach(e => {
+    const fn = _nodeMap[e.from];
+    const tn = _nodeMap[e.to];
+    if (e.type === 'fk') {
+      // FK: from=parent (upstream), to=child (downstream)
+      // Clicking the child → parent is in "Reads From" (upstream source)
+      if (e.to   === d.id && fn && _withinDepth(fn)) readsFrom.push({ n: fn,  icon: 'bi-link-45deg',   color: '#16a34a', tip: 'FK reference' });
+      // Clicking the parent → child is in "Writes To" (downstream dependent)
+      if (e.from === d.id && tn && _withinDepth(tn)) writesTo .push({ n: tn,  icon: 'bi-link-45deg',   color: '#dc2626', tip: 'referenced by' });
+    }
+    if (e.type === 'view') {
+      // view: from=source table (upstream), to=view (downstream)
+      // Clicking the view → source is in "Reads From"
+      if (e.to   === d.id && fn && _withinDepth(fn)) readsFrom.push({ n: fn,  icon: 'bi-eye',           color: '#16a34a', tip: 'reads from' });
+      // Clicking the source → view is in "Writes To"
+      if (e.from === d.id && tn && _withinDepth(tn)) writesTo .push({ n: tn,  icon: 'bi-eye',           color: '#dc2626', tip: 'used in view' });
+    }
+    if (e.type === 'rtn_reads') {
+      // rtn_reads: from=table (upstream), to=routine (downstream)
+      if (e.to   === d.id && fn && _withinDepth(fn)) readsFrom.push({ n: fn,  icon: 'bi-gear',          color: '#16a34a', tip: 'read by routine' });
+      if (e.from === d.id && tn && _withinDepth(tn)) writesTo .push({ n: tn,  icon: 'bi-gear',          color: '#dc2626', tip: 'routine reads this' });
+    }
+    if (e.type === 'rtn_writes') {
+      // rtn_writes: from=routine (upstream), to=table (downstream)
+      if (e.from === d.id && tn && _withinDepth(tn)) writesTo .push({ n: tn,  icon: 'bi-pencil-square', color: '#dc2626', tip: 'routine writes to' });
+      if (e.to   === d.id && fn && _withinDepth(fn)) readsFrom.push({ n: fn,  icon: 'bi-pencil-square', color: '#16a34a', tip: 'written by routine' });
+    }
+  });
+
+  // Deduplicate by node ID — multiple FK constraints or view deps between
+  // the same pair of tables produce multiple edges but should show once.
+  function dedupe(list) {
+    const seen = new Set();
+    return list.filter(e => {
+      if (seen.has(e.n.id)) return false;
+      seen.add(e.n.id);
+      return true;
+    });
+  }
+
+  function relItem(entry) {
+    const lbl = entry.n.schema + '.' + entry.n.label;
+    const col  = entry.n.external ? '#94a3b8' : groupColor(entry.n.group);
+    return '<div class="ln-rel-item" title="' + entry.tip + '"' +
+      ' onclick="traceNode(\'' + entry.n.id.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">' +
+      '<span class="ln-rel-dot" style="background:' + col + '"></span>' +
+      '<i class="bi ' + entry.icon + ' me-1" style="color:' + entry.color + ';font-size:0.75rem"></i>' +
+      '<span>' + lbl + '</span>' +
+    '</div>';
+  }
+
+  const uniqueReadsFrom = dedupe(readsFrom);
+  const uniqueWritesTo  = dedupe(writesTo);
+
+  document.getElementById('detailReadsFrom').innerHTML = uniqueReadsFrom.length
+    ? uniqueReadsFrom.map(relItem).join('')
+    : '<span class="ln-rel-empty">None in scope</span>';
+  document.getElementById('detailWritesTo').innerHTML  = uniqueWritesTo.length
+    ? uniqueWritesTo.map(relItem).join('')
+    : '<span class="ln-rel-empty">None in scope</span>';
+
+  // ── Columns ──────────────────────────────────────────────────
+  if (d.external || d.kind === 'function' || d.kind === 'procedure') {
+    document.getElementById('detailCols').innerHTML =
+      '<span class="text-muted" style="font-size:0.78rem">' +
+      (d.external ? 'External reference — not in selected scope' :
+                    'Columns not applicable for routines') +
+      '</span>';
+    return;
+  }
+
+  document.getElementById('detailCols').innerHTML =
+    '<span class="text-muted" style="font-size:0.78rem">Loading…</span>';
+  try {
+    const dbP  = d.database ? '&db=' + encodeURIComponent(d.database) : '';
+    const resp = await fetch(
+      '/api/tree/columns?conn='   + encodeURIComponent(d.conn_key) + dbP +
+      '&schema=' + encodeURIComponent(d.schema) +
+      '&table='  + encodeURIComponent(d.label));
+    const cols = (await resp.json()).columns || [];
+    document.getElementById('detailCols').innerHTML = cols.length
+      ? cols.map(c =>
+          '<span class="ln-col-pill" title="' + c.type + '">' + c.name + '</span>').join('')
+      : '<span class="text-muted" style="font-size:0.78rem">No columns found</span>';
+  } catch {
+    document.getElementById('detailCols').innerHTML =
+      '<span class="text-muted" style="font-size:0.78rem">Could not load columns</span>';
+  }
+}
+
+function closeDetail() {
+  document.getElementById('lnDetail').classList.remove('visible');
+  if (_cy) _cy.elements().unselect();
+}
+
+/* ── Overlay helper ─────────────────────────────────────────── */
+function showOverlay(state, msg) {
+  const el = document.getElementById('lnLoading');
+  el.classList.remove('hidden');
+  if (state === 'building') {
+    el.innerHTML =
+      '<div class="spinner-border text-primary" style="width:2rem;height:2rem"></div>' +
+      '<div style="font-size:0.84rem;color:#64748b">Building lineage graph…</div>';
+  } else {
+    el.innerHTML =
+      '<i class="bi bi-exclamation-triangle text-danger" style="font-size:2rem"></i>' +
+      '<div style="color:#ef4444;font-size:0.84rem;text-align:center;max-width:320px;padding:0 20px">' +
+      msg + '</div>';
+  }
+}
+
+/* ── Fit button ─────────────────────────────────────────────── */
+document.getElementById('lnFitBtn').onclick = () => _cy?.fit(undefined, 30);
+
+/* ── Init on page load ──────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', initFromActiveConn);
+</script>
+{% endblock %}

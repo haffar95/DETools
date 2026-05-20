@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import session, redirect, url_for, flash, request
+from flask import session, redirect, url_for, request
 from app.models.user import User
 
 def login_required(f):
@@ -17,7 +17,6 @@ def admin_required(f):
             return redirect(url_for('login'))
         user = User.get_user(session['user_id'])
         if not user or not user.is_admin:
-            flash('Admin access required', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
@@ -38,7 +37,6 @@ def connection_access_required(f):
             connection_name = session.get('current_connection')
 
         if not connection_name or not user.can_access_connection(connection_name):
-            flash('You do not have access to this connection', 'danger')
             return redirect(url_for('database_config'))
             
         return f(*args, **kwargs)
